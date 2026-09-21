@@ -1,0 +1,21 @@
+{
+  "name": "lumina-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lumina Tools — Discord Quest Auto-Completer + Gateway Selfbot",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node index.js",
+
+    "install:all": "npm install && npm --prefix \"Auto Quest Completer Discord\" install && npm --prefix \"Self Bot\" install",
+    "install:quest": "npm --prefix \"Auto Quest Completer Discord\" install",
+    "install:selfbot": "npm --prefix \"Self Bot\" install",
+
+    "quest": "npm --prefix \"Auto Quest Completer Discord\" start",
+    "selfbot": "npm --prefix \"Self Bot\" start"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

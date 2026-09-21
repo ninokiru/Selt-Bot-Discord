@@ -1,0 +1,71 @@
+{
+  "sessionMaxMinutes": 360,
+  "sessionWarnMinutes": 300,
+  "sessionAutoStop": true,
+  "sessionLogFile": "session.log",
+
+  "status": {
+    "type": "PLAYING",
+    "text": "quests"
+  },
+
+  "commands": {
+    "prefix": ".",
+    "dmSelfEnabled": true,
+    "channelEnabled": true,
+    "consoleEnabled": true,
+    "rateLimit": {
+      "enabled": true,
+      "windowMs": 60000,
+      "maxCommands": 10,
+      "cooldownMs": 1500,
+      "ignoreDuplicateMs": 3000,
+      "silentOnLimit": true
+    }
+  },
+
+  "typingDelay": {
+    "baseMinMs": 500,
+    "baseMaxMs": 1200,
+    "perCharMs": 15,
+    "maxMs": 3500,
+    "jitterMinMs": 0,
+    "jitterMaxMs": 800
+  },
+
+  "voice": {
+    "autoReconnect": true,
+    "reconnectMaxAttempts": 3,
+    "selfDeaf": true,
+    "selfMute": false
+  },
+
+  "music": {
+    "ytDlpPath": "bin/yt-dlp.exe",
+    "maxQueueSize": 30,
+    "defaultVolume": 50,
+    "maxDurationSec": 1800,
+    "searchLimit": 1,
+    "audioFormat": "bestaudio"
+  },
+
+  "afk": {
+    "cooldownMs": 60000,
+    "cooldownMode": "per_user",
+    "maxReasonLen": 200,
+    "replyTemplate": "Đang AFK: {reason} ({duration})",
+    "noReasonTemplate": "Đang AFK — sẽ trả lời sau ({duration})",
+    "backTemplate": "Đã trở lại — cảm ơn đã ping",
+    "reactEmoji": "💤",
+    "autoDisableOnActivity": true,
+    "announceBack": true,
+    "dmReply": false,
+    "ignoreBots": true,
+    "ignoreUsers": [],
+    "ignoreChannels": [],
+    "silentMode": false,
+    "persist": true
+  },
+
+  "debug": false
+}

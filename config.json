@@ -1,0 +1,81 @@
+{
+  "_help": "Config cho launcher root — không phải config của tool con",
+  "_version": 2,
+
+  "launcher": {
+    "title": "LUMINA TOOLS LAUNCHER",
+    "showBanner": true,
+    "showDescriptions": true,
+    "confirmExit": false,
+    "clearAltScreen": true,
+    "killTreeOnExit": true,
+    "autoCheckDeps": true,
+    "autoCheckInstalled": true
+  },
+
+  "shared": {
+    "tokensFile": "tokens.txt",
+    "proxiesFile": "proxies.txt"
+  },
+
+  "tools": {
+    "quest": {
+      "enabled": true,
+      "label": "Farm Quest",
+      "folder": "Auto Quest Completer Discord",
+      "description": "Auto-accept + complete Discord quests (REST + proxy)",
+      "key": "1",
+      "entry": "npm start"
+    },
+    "selfbot": {
+      "enabled": true,
+      "label": "Selfbot",
+      "folder": "Self Bot",
+      "description": "Gateway selfbot · voice · music · rpc",
+      "key": "2",
+      "entry": "npm start"
+    }
+  },
+
+  "exit": {
+    "key": "3",
+    "label": "Exit",
+    "aliases": ["q", "quit", "exit"]
+  },
+
+  "logging": {
+    "debug": false,
+    "showTimestamp": false
+  },
+
+  "setup": {
+    "_help": "Config cho setup.js — chạy: npm run setup",
+    "nodeMinMajor": 20,
+    "autoInstallDeps": true,
+    "autoDownloadYtDlp": true,
+    "autoCreateMissingFiles": true,
+    "autoChmodSecrets": true,
+    "verifyAfterInstall": true,
+    "ytDlpTargetDir": "Self Bot/bin",
+    "ytDlpPlatformOverride": null,
+    "depsToVerify": {
+      "quest": [
+        "axios",
+        "blessed",
+        "chalk",
+        "https-proxy-agent",
+        "p-limit",
+        "socks-proxy-agent"
+      ],
+      "selfbot": [
+        "@discordjs/opus",
+        "@discordjs/voice",
+        "blessed",
+        "chalk",
+        "discord.js-selfbot-v13",
+        "ffmpeg-static",
+        "libsodium-wrappers"
+      ]
+    }
+  }
+}

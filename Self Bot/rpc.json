@@ -1,0 +1,40 @@
+{
+  "_help": "Đọc README.md section RPC để biết chi tiết field",
+  "_version": 4,
+
+  "enabled": true,
+  "applyOnReady": true,
+  "status": "online",
+
+  "application_id": "",
+  "application_name": "Visual Studio Code",
+  "type": "PLAYING",
+
+  "details": "Editing",
+  "details_url": "",
+  "state": "index.js",
+  "state_url": "",
+
+  "stream_url": "",
+
+  "party_current": 0,
+  "party_max": 0,
+  "party_id": "",
+
+  "large_image": "",
+  "large_text": "",
+  "large_url": "",
+
+  "small_image": "",
+  "small_text": "",
+  "small_url": "",
+
+  "button1_label": "",
+  "button1_url": "",
+  "button2_label": "",
+  "button2_url": "",
+
+  "timestamp_mode": "start",
+  "start_timestamp": 0,
+  "end_timestamp": 0
+}
