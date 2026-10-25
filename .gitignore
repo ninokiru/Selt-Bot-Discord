@@ -1,17 +1,13 @@
 # Dependencies
 node_modules/
-*/node_modules/
-
-# Shared secrets
-tokens.txt
-proxies.txt
-
-# Runtime state
-.runtime.json
 
 # Logs
 *.log
 logs/
+
+# Runtime cache
+.cache/
+.tmp/
 
 # OS
 .DS_Store

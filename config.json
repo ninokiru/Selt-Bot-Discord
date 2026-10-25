@@ -1,81 +1,71 @@
 {
-  "_help": "Config cho launcher root — không phải config của tool con",
-  "_version": 2,
+  "sessionMaxMinutes": 360,
+  "sessionWarnMinutes": 300,
+  "sessionAutoStop": true,
+  "sessionLogFile": "session.log",
 
-  "launcher": {
-    "title": "LUMINA TOOLS LAUNCHER",
-    "showBanner": true,
-    "showDescriptions": true,
-    "confirmExit": false,
-    "clearAltScreen": true,
-    "killTreeOnExit": true,
-    "autoCheckDeps": true,
-    "autoCheckInstalled": true
+  "status": {
+    "type": "PLAYING",
+    "text": "quests"
   },
 
-  "shared": {
-    "tokensFile": "tokens.txt",
-    "proxiesFile": "proxies.txt"
-  },
-
-  "tools": {
-    "quest": {
+  "commands": {
+    "prefix": ".",
+    "dmSelfEnabled": true,
+    "channelEnabled": true,
+    "consoleEnabled": true,
+    "rateLimit": {
       "enabled": true,
-      "label": "Farm Quest",
-      "folder": "Auto Quest Completer Discord",
-      "description": "Auto-accept + complete Discord quests (REST + proxy)",
-      "key": "1",
-      "entry": "npm start"
-    },
-    "selfbot": {
-      "enabled": true,
-      "label": "Selfbot",
-      "folder": "Self Bot",
-      "description": "Gateway selfbot · voice · music · rpc",
-      "key": "2",
-      "entry": "npm start"
+      "windowMs": 60000,
+      "maxCommands": 10,
+      "cooldownMs": 1500,
+      "ignoreDuplicateMs": 3000,
+      "silentOnLimit": true
     }
   },
 
-  "exit": {
-    "key": "3",
-    "label": "Exit",
-    "aliases": ["q", "quit", "exit"]
+  "typingDelay": {
+    "baseMinMs": 500,
+    "baseMaxMs": 1200,
+    "perCharMs": 15,
+    "maxMs": 3500,
+    "jitterMinMs": 0,
+    "jitterMaxMs": 800
   },
 
-  "logging": {
-    "debug": false,
-    "showTimestamp": false
+  "voice": {
+    "autoReconnect": true,
+    "reconnectMaxAttempts": 3,
+    "selfDeaf": true,
+    "selfMute": false
   },
 
-  "setup": {
-    "_help": "Config cho setup.js — chạy: npm run setup",
-    "nodeMinMajor": 20,
-    "autoInstallDeps": true,
-    "autoDownloadYtDlp": true,
-    "autoCreateMissingFiles": true,
-    "autoChmodSecrets": true,
-    "verifyAfterInstall": true,
-    "ytDlpTargetDir": "Self Bot/bin",
-    "ytDlpPlatformOverride": null,
-    "depsToVerify": {
-      "quest": [
-        "axios",
-        "blessed",
-        "chalk",
-        "https-proxy-agent",
-        "p-limit",
-        "socks-proxy-agent"
-      ],
-      "selfbot": [
-        "@discordjs/opus",
-        "@discordjs/voice",
-        "blessed",
-        "chalk",
-        "discord.js-selfbot-v13",
-        "ffmpeg-static",
-        "libsodium-wrappers"
-      ]
-    }
-  }
+  "music": {
+    "ytDlpPath": "bin/yt-dlp.exe",
+    "maxQueueSize": 30,
+    "defaultVolume": 50,
+    "maxDurationSec": 1800,
+    "searchLimit": 1,
+    "audioFormat": "bestaudio"
+  },
+
+  "afk": {
+    "cooldownMs": 60000,
+    "cooldownMode": "per_user",
+    "maxReasonLen": 200,
+    "replyTemplate": "Đang AFK: {reason} ({duration})",
+    "noReasonTemplate": "Đang AFK — sẽ trả lời sau ({duration})",
+    "backTemplate": "Đã trở lại — cảm ơn đã ping",
+    "reactEmoji": "💤",
+    "autoDisableOnActivity": true,
+    "announceBack": true,
+    "dmReply": false,
+    "ignoreBots": true,
+    "ignoreUsers": [],
+    "ignoreChannels": [],
+    "silentMode": false,
+    "persist": true
+  },
+
+  "debug": false
 }
