@@ -13,8 +13,6 @@ export function createStats() {
     voiceJoins: 0,
     voiceLeaves: 0,
     voiceReconnects: 0,
-    musicPlayed: 0,
-    musicSkipped: 0,
     afkPings: 0,
     afkReplies: 0,
     presenceUpdates: 0,

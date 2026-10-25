@@ -254,7 +254,7 @@ async function handleAutoDisable(client, msg, config, log) {
     try {
       const channel = client.channels.cache.get(lastPing.channelId);
       if (channel?.send) {
-        const backMsg = renderBackMessage();
+        const backMsg = renderBackMessage(lastPing.duration);
         await sleep(computeTypingDelay(backMsg, config));
         const sent = await channel.send(backMsg).catch(() => null);
         if (sent) markCodeSent(sent.id);

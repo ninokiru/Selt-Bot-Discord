@@ -256,14 +256,14 @@ export function clearRPC() {
   const client = ctx.getClient?.();
   if (!client?.user) return;
 
-  const st = ctx.mainConfig?.status || { type: 'PLAYING', text: 'quests' };
+  const st = ctx.mainConfig?.status || {};
 
   try {
     client.user.setPresence({
-      activities: [{
-        name: String(st.text || 'quests').slice(0, 128),
+      activities: st.text ? [{
+        name: String(st.text).slice(0, 128),
         type: ACTIVITY_TYPES[String(st.type || 'PLAYING').toUpperCase()] ?? 0,
-      }],
+      }] : [],
       status: 'online',
     });
     log('ok', 'RPC cleared');

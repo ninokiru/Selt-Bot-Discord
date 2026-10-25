@@ -1,11 +1,10 @@
 import path from 'node:path';
-import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { createSelfbotClient, loadAllowedChannels } from './client.js';
 import { makeLogger, setDebug, setOutput, log as rootLog } from './logger.js';
 import { setShuttingDown, isShuttingDown } from './shutdown.js';
-import { readLines, readJson, sleep, randInt, fmtDur, auditSecretFile } from './utils.js';
+import { readLines, readJson, sleep, fmtDur, auditSecretFile } from './utils.js';
 import { createDashboard } from './dashboard.js';
 import { createSession, logSessionEnd } from './session.js';
 import { createStats } from './stats.js';
@@ -15,18 +14,16 @@ import {
   startConsole,
 } from './commands/index.js';
 import { leaveVoice, getVoiceState } from './voiceSession.js';
-import { initMusic, destroyMusic, registerVoiceStateGetter } from './music.js';
 import { initRPC, applyRPCFromConfig } from './rpc.js';
 import { initAfk, getAfk } from './afk.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SELF_ROOT = path.resolve(__dirname, '..');
-const SHARED_ROOT = path.resolve(__dirname, '..', '..');
+const ROOT = path.resolve(__dirname, '..');
 
-const CONFIG_PATH = path.join(SELF_ROOT, 'config.json');
-const CHANNEL_PATH = path.join(SELF_ROOT, 'channel.txt');
-const TOKENS_PATH = path.join(SHARED_ROOT, 'tokens.txt');
-const SESSION_LOG = path.join(SELF_ROOT, 'session.log');
+const CONFIG_PATH = path.join(ROOT, 'config.json');
+const CHANNEL_PATH = path.join(ROOT, 'channel.txt');
+const TOKENS_PATH = path.join(ROOT, 'tokens.txt');
+const SESSION_LOG = path.join(ROOT, 'session.log');
 
 let currentClient = null;
 let consoleRl = null;
@@ -34,10 +31,12 @@ let session = null;
 let stats = null;
 let dispatcher = null;
 let stopped = false;
+let activeDashboard = null;
 
 function requestShutdown() {
   if (isShuttingDown()) {
     try { currentClient?.destroy(); } catch {}
+    try { activeDashboard?.destroy(); } catch {}
     process.exit(0);
   }
   setShuttingDown(true);
@@ -65,10 +64,6 @@ async function startSelfbot(config, token, dashboard) {
 
   // Init AFK
   initAfk(config);
-
-  // Init music
-  initMusic({ config, logger, stats });
-  registerVoiceStateGetter(getVoiceState);
 
   // Init RPC
   initRPC({ config, logger, getClient: () => currentClient });
@@ -158,6 +153,7 @@ async function startSelfbot(config, token, dashboard) {
       dashboard.setPing(currentClient.ws?.ping ?? 0);
       dashboard.setGuilds(currentClient.guilds?.cache?.size || 0);
       dashboard.setStats(stats.snapshot());
+      if (session) dashboard.setSessionElapsed(session.elapsedMs());
 
       // AFK
       dashboard.setAfk(getAfk());
@@ -204,8 +200,6 @@ async function stopSelfbot(dashboard) {
     }
   } catch {}
 
-  try { destroyMusic(); } catch {}
-
   if (currentClient) {
     try {
       if (currentClient._dashTimer) clearInterval(currentClient._dashTimer);
@@ -240,6 +234,7 @@ async function main() {
   const token = tokens[0];
 
   const dashboard = createDashboard({ onQuit: () => requestShutdown() });
+  activeDashboard = dashboard;
   setOutput((line) => dashboard.appendLog(line));
 
   process.on('SIGINT', () => requestShutdown());

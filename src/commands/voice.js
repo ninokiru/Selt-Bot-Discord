@@ -1,5 +1,5 @@
 import { getVoiceState, joinVoice } from '../voiceSession.js';
-import { startConfirm, isPending } from '../voiceConfirm.js';
+import { startConfirm, isPending, getRemaining } from '../voiceConfirm.js';
 
 const CONFIRM_TTL_MS = 30000;
 
@@ -24,9 +24,9 @@ export async function register({ registerCommand }) {
 
         // Đang ở voice + đã có pending confirm → nhắc lại
         if (isPending()) {
-          const remain = Math.ceil(CONFIRM_TTL_MS / 1000);
+          const remain = Math.ceil(getRemaining() / 1000);
           return reply(
-            `Đang chờ xác nhận rời voice.\n` +
+            `Đang chờ xác nhận rời voice (còn ${remain}s).\n` +
             `Trả lời **yes** để rời, **no** để ở lại.`
           );
         }

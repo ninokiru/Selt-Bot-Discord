@@ -33,20 +33,16 @@
     "jitterMaxMs": 800
   },
 
+  "antiDetection": {
+    "reactDelayMinMs": 200,
+    "reactDelayMaxMs": 800
+  },
+
   "voice": {
     "autoReconnect": true,
     "reconnectMaxAttempts": 3,
     "selfDeaf": true,
     "selfMute": false
-  },
-
-  "music": {
-    "ytDlpPath": "bin/yt-dlp.exe",
-    "maxQueueSize": 30,
-    "defaultVolume": 50,
-    "maxDurationSec": 1800,
-    "searchLimit": 1,
-    "audioFormat": "bestaudio"
   },
 
   "afk": {

@@ -99,6 +99,9 @@ function loadState() {
     state.userId = data.userId || null;
     state.totalReplies = data.totalReplies | 0;
     state.totalPings = data.totalPings | 0;
+    state.lastPingChannelId = data.lastPingChannelId || null;
+    state.lastPingMessageId = data.lastPingMessageId || null;
+    state.lastPingGuildId = data.lastPingGuildId || null;
 
     if (Array.isArray(data.perUser)) {
       for (const [uid, info] of data.perUser) {
@@ -118,6 +121,9 @@ function saveState() {
       userId: state.userId,
       totalReplies: state.totalReplies,
       totalPings: state.totalPings,
+      lastPingChannelId: state.lastPingChannelId,
+      lastPingMessageId: state.lastPingMessageId,
+      lastPingGuildId: state.lastPingGuildId,
       perUser: [...state.perUser.entries()],
     };
     const tmp = `${AFK_FILE}.${process.pid}.tmp`;
@@ -132,6 +138,9 @@ export function enableAfk(reason, userId) {
   state.reason = String(reason || '').trim().slice(0, cfg.maxReasonLen);
   state.setAt = Date.now();
   state.userId = userId;
+  state.lastPingChannelId = null;
+  state.lastPingMessageId = null;
+  state.lastPingGuildId = null;
   state.cooldowns.clear();
   state.globalCooldownAt = 0;
   saveState();
@@ -258,9 +267,12 @@ function interpolate(str, vars) {
   });
 }
 
-export function renderBackMessage() {
+export function renderBackMessage(afkDurationMs) {
+  const dur = Number.isFinite(afkDurationMs)
+    ? afkDurationMs
+    : (state.setAt ? Date.now() - state.setAt : 0);
   return interpolate(cfg.backTemplate, {
-    duration: state.setAt ? fmtDur((Date.now() - state.setAt) / 1000) : '?',
+    duration: fmtDur(dur / 1000),
   }).trim();
 }
 

@@ -62,7 +62,6 @@ export function createDashboard(options = {}) {
     scheduleRender();
   }
 
-  const startedAt = Date.now();
   const state = {
     user: '-',
     userId: '-',
@@ -91,8 +90,8 @@ export function createDashboard(options = {}) {
       errors: 0,
       voiceJoins: 0,
       voiceLeaves: 0,
-      musicPlayed: 0,
-      musicSkipped: 0,
+      voiceReconnects: 0,
+      presenceUpdates: 0,
       afkPings: 0,
       afkReplies: 0,
     },
@@ -107,7 +106,7 @@ export function createDashboard(options = {}) {
     border: { type: 'line' },
     style: { border: { fg: 'cyan' }, fg: 'white' },
     label: ` {bold}{cyan-fg}Lumina Selfbot{/cyan-fg}{/bold} {gray-fg}v${VERSION}{/gray-fg} `,
-    content: ' {gray-fg}gateway · voice · music · afk · snipe · rich presence · session{/gray-fg}',
+    content: ' {gray-fg}gateway · voice · afk · snipe · rich presence · session{/gray-fg}',
   });
 
   // ── Session panel ────────────────────────────────────────
@@ -141,7 +140,7 @@ export function createDashboard(options = {}) {
     style: { border: { fg: 'cyan' }, fg: 'white' },
     label: ' Commands ',
     content:
-      ' {gray-fg}.cmd  .ping  .uptime  .voice  .play  .skip  .resume  .stop  .afk  .snipe  .editsnipe{/gray-fg}',
+      ' {gray-fg}.cmd  .ping  .uptime  .voice  .afk  .snipe  .editsnipe{/gray-fg}',
   });
 
   // ── Log ──────────────────────────────────────────────────
@@ -266,13 +265,13 @@ export function createDashboard(options = {}) {
       '  ' +
       cell('Voice join', s.voiceJoins) +
       cell('Voice leave', s.voiceLeaves) +
-      cell('Music play', s.musicPlayed, 'green');
+      cell('Voice recon', s.voiceReconnects);
 
     const line4 =
       '  ' +
-      cell('Music skip', s.musicSkipped) +
       cell('AFK pings', s.afkPings, s.afkPings > 0 ? 'yellow' : null) +
-      cell('AFK reply', s.afkReplies, s.afkReplies > 0 ? 'green' : null);
+      cell('AFK reply', s.afkReplies, s.afkReplies > 0 ? 'green' : null) +
+      cell('Presence', s.presenceUpdates);
 
     statsBox.setContent([line1, line2, line3, line4].join('\n'));
   }
@@ -303,7 +302,7 @@ export function createDashboard(options = {}) {
       parts.push(`{cyan-fg}${state.voice}{/cyan-fg}`);
     }
 
-    parts.push(`{gray-fg}.cmd trong console · q quit · ctrl+c force{/gray-fg}`);
+    parts.push(`{gray-fg}.cmd trong console · esc quit · ctrl+c force{/gray-fg}`);
 
     status.setContent(parts.join(' · '));
   }
@@ -311,7 +310,6 @@ export function createDashboard(options = {}) {
   const tickTimer = setInterval(() => {
     spinnerIdx++;
     if (state.running) {
-      state.sessionElapsedMs = Date.now() - startedAt;
       if (state.afk.enabled && state.afk.setAt) {
         state.afk.duration = Date.now() - state.afk.setAt;
       }
@@ -334,7 +332,7 @@ export function createDashboard(options = {}) {
     if (renderTimer) clearTimeout(renderTimer);
   });
 
-  screen.key(['escape', 'q'], () => onQuitExternal());
+  screen.key(['escape'], () => onQuitExternal());
   screen.key(['C-c'], () => onQuitExternal());
 
   refreshSession();
@@ -389,6 +387,12 @@ export function createDashboard(options = {}) {
 
     setSessionMax(min) {
       state.sessionMaxMin = min | 0;
+      refreshSession();
+      invalidate();
+    },
+
+    setSessionElapsed(ms) {
+      state.sessionElapsedMs = Math.max(0, ms | 0);
       refreshSession();
       invalidate();
     },

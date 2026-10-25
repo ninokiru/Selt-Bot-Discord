@@ -34,8 +34,8 @@ function formatSnipe(entry, index, total) {
     ? fmtDur((Date.now() - entry.deletedAt) / 1000) + ' trước'
     : '?';
 
-  const cacheTag = entry.fromCache ? ' {gray-fg}(cached){/gray-fg}' : '';
-  const botTag = entry.authorBot ? ' {gray-fg}[BOT]{/gray-fg}' : '';
+  const cacheTag = entry.fromCache ? ' *(cached)*' : '';
+  const botTag = entry.authorBot ? ' *[BOT]*' : '';
 
   const header = `#${index + 1}/${total} — ${entry.authorTag}${botTag} · ${durAgo}${cacheTag}`;
 
@@ -47,7 +47,7 @@ function formatSnipe(entry, index, total) {
       : entry.content;
     lines.push(`"${content}"`);
   } else {
-    lines.push('{gray-fg}(không có text — tin gửi trước khi selfbot cache){/gray-fg}');
+    lines.push('*(không có text — tin gửi trước khi selfbot cache)*');
   }
 
   const att = formatAttachments(entry.attachments);
@@ -78,8 +78,8 @@ function formatEditSnipe(entry, index, total) {
 
   const lines = [
     header,
-    `{gray-fg}Trước:{/gray-fg} "${oldC}"`,
-    `{gray-fg}Sau:  {/gray-fg} "${newC}"`,
+    `*Trước:* "${oldC}"`,
+    `*Sau:* "${newC}"`,
     `🔗 ${jumpLink(entry)}`,
   ];
 
@@ -128,7 +128,7 @@ export async function register({ registerCommand }) {
         });
 
         return reply(
-          `Tin bị xoá (${all.length}/${MAX_LIST}):\n${lines.join('\n')}`
+          `Tin bị xoá (${lines.length}/${all.length}):\n${lines.join('\n')}`
         );
       }
 
@@ -201,7 +201,7 @@ export async function register({ registerCommand }) {
         });
 
         return reply(
-          `Tin bị sửa (${all.length}/${MAX_LIST}):\n${lines.join('\n')}`
+          `Tin bị sửa (${lines.length}/${all.length}):\n${lines.join('\n')}`
         );
       }
 

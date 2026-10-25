@@ -123,7 +123,6 @@ export async function joinVoice({ client, guildId, channelId, config, logger, st
 export async function leaveVoice({ logger, stats } = {}) {
   if (!state.connection) return false;
 
-  const gid = state.guildId;
   const conn = state.connection;
 
   resetState();
@@ -136,14 +135,6 @@ export async function leaveVoice({ logger, stats } = {}) {
   } catch (e) {
     logger?.error(`leaveVoice: ${e.message}`);
   }
-
-  // Cleanup music
-  try {
-    const music = await import('./music.js');
-    if (typeof music.cleanupGuild === 'function') {
-      music.cleanupGuild(gid);
-    }
-  } catch {}
 
   return true;
 }

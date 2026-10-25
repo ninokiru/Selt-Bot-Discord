@@ -1,7 +1,7 @@
 {
   "name": "lumina-selfbot",
   "version": "1.0.0",
-  "description": "Gateway selfbot · voice · music · session-based",
+  "description": "Gateway selfbot · voice · afk · snipe · rpc · session-based",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
@@ -12,12 +12,10 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.18.0",
     "blessed": "^0.1.81",
     "chalk": "^5.3.0",
     "discord.js-selfbot-v13": "^3.7.1",
-    "ffmpeg-static": "^5.2.0",
     "libsodium-wrappers": "^0.7.15"
   }
 }

@@ -17,7 +17,6 @@ const LEVELS = {
   ws:    { label: '  WS',  color: chalk.magenta,      rank: 2 },
   voice: { label: 'VOICE', color: chalk.blue,         rank: 2 },
   cmd:   { label: ' CMD',  color: chalk.cyanBright,   rank: 2 },
-  music: { label: 'MUSIC', color: chalk.greenBright,  rank: 2 },
 };
 
 const config = {
@@ -82,7 +81,6 @@ export function makeLogger(tag = '') {
     ws:    (m) => emit('ws', tag, m),
     voice: (m) => emit('voice', tag, m),
     cmd:   (m) => emit('cmd', tag, m),
-    music: (m) => emit('music', tag, m),
     raw:   (m) => {
       try {
         const body = typeof m === 'function' ? String(m()) : String(m ?? '');

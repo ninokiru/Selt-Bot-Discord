@@ -1,8 +1,6 @@
 # Lumina Selfbot
 
-Gateway selfbot cho Discord — voice · music · RPC · session-based.
-
-Chạy song song với `Auto Quest Completer Discord` hoặc độc lập. Dùng chung `tokens.txt` ở root.
+Gateway selfbot cho Discord — voice · afk · snipe · RPC · session-based.
 
 ---
 
@@ -27,63 +25,28 @@ Chạy song song với `Auto Quest Completer Discord` hoặc độc lập. Dùng
 
 ## Cài đặt
 
-### Cách 1 — qua launcher root (khuyến nghị)
-
 ```bash
-cd "Selt Bot Discord"
-npm run install:all
-npm start
-# → chọn [2] Selfbot
-```
-
-### Cách 2 — chạy trực tiếp
-
-```bash
-cd "Selt Bot Discord/Self Bot"
+cd "Selt-Bot-Discord-Beta"
 npm install
-npm start
 ```
 
-### Bước 1 — Chuẩn bị yt-dlp
+### Bước 1 — Token
 
-Tải `yt-dlp.exe` (Windows) hoặc `yt-dlp` (Unix):
-
-```
-https://github.com/yt-dlp/yt-dlp/releases/latest
-```
-
-Đặt vào `Self Bot/bin/`:
-
-```
-Self Bot/
-└── bin/
-    └── yt-dlp.exe      ← Windows
-    └── yt-dlp          ← Linux/Mac
-```
-
-Verify:
-```bash
-bin/yt-dlp.exe --version
-# Phải in version, ví dụ: 2024.11.04
-```
-
-yt-dlp tự update khi cần — chạy `bin/yt-dlp.exe -U` định kỳ.
-
-### Bước 2 — Token
-
-Token nằm ở root `Selt Bot Discord/tokens.txt`:
+Tạo `tokens.txt` ở root project:
 
 ```
 MTIzNDU2Nzg5.MTk4NzY1NDM.WXYZ...
 ```
 
-Selfbot đọc **token đầu tiên** trong file.
+- Mỗi dòng 1 token, dòng bắt đầu `#` bị bỏ qua
+- Selfbot đọc **token đầu tiên** trong file
+- `tokens.txt` đã nằm trong `.gitignore` — không commit
 
-### Bước 3 — Config
+### Bước 2 — Config
 
 Xem section **Config** bên dưới.
 
-### Bước 4 — Chạy
+### Bước 3 — Chạy
 
 ```bash
 npm start
@@ -96,45 +59,39 @@ Selfbot khởi động, dashboard hiện ra.
 ## Cấu trúc thư mục
 
 ```
-Self Bot/
-├── bin/
-│   └── yt-dlp.exe              Binary extract audio (17-30MB)
-│
+Selt-Bot-Discord-Beta/
 ├── src/
 │   ├── index.js                Entry point — load config, login, orchestrate
 │   ├── client.js               Gateway wrapper (discord.js-selfbot-v13)
-│   ├── dashboard.js            TUI — 3 panel (Session / Stats / Commands)
+│   ├── dashboard.js            TUI — panel Session / Stats / Commands / Log
 │   ├── logger.js               Log với ANSI levels
 │   ├── shutdown.js             Global shutdown flag
 │   ├── session.js              Session timer + log end
 │   ├── stats.js                Counter runtime (messages, cmds, voice...)
-│   ├── voiceSession.js         Join/leave voice channel
-│   ├── music.js                Music queue + spawn yt-dlp + ffmpeg
+│   ├── voiceSession.js         Join/leave voice + auto reconnect
+│   ├── voiceConfirm.js         Trạng thái chờ xác nhận yes/no
 │   ├── rpc.js                  Rich Presence — đọc từ rpc.json
-│   ├── utils.js                Helpers (sleep, randInt, readJson...)
+│   ├── afk.js                  AFK state, cooldown, template, persist
+│   ├── snipe.js                Lưu tin bị xoá / bị sửa theo channel
+│   ├── messageCache.js         Cache nội dung tin (30 phút, tối đa 2000)
+│   ├── utils.js                Helpers (sleep, randInt, readJson, typing delay...)
 │   └── commands/
 │       ├── index.js            Registry + dispatcher + console + rate limit
-│       ├── cmd.js              .cmd — list commands
-│       ├── join.js             .join — vào voice channel
-│       ├── leave.js            .leave — rời voice channel
-│       ├── ping.js             .ping — gateway latency
-│       ├── uptime.js           .uptime — session uptime
-│       ├── exit.js             .exit — dừng selfbot (hidden)
-│       └── music/
-│           ├── play.js         .play — phát nhạc
-│           ├── skip.js         .skip — bỏ qua bài
-│           ├── resume.js       .resume — tiếp tục/tạm dừng (toggle)
-│           ├── stop.js         .stop — dừng + xóa queue
-│           ├── queue.js        .queue (hidden)
-│           └── volume.js       .volume (hidden)
+│       ├── cmd.js              .cmd
+│       ├── ping.js             .ping
+│       ├── uptime.js           .uptime
+│       ├── voice.js            .voice
+│       ├── afk.js              .afk
+│       ├── snipe.js            .snipe + .editsnipe
+│       └── exit.js             .exit (hidden)
 │
-├── config.json                 Config chính (session, music, voice, commands)
-├── rpc.json                    Rich Presence config riêng
+├── config.json                 Config chính
+├── rpc.json                    Rich Presence config
 ├── channel.txt                 Whitelist channel IDs
-├── session.log                 Log JSON mỗi session (auto-gen)
-├── package.json
-├── .gitignore
-└── README.md
+├── tokens.txt                  Token (gitignore)
+├── .afk.json                   AFK state (auto-gen, gitignore)
+├── session.log                 Log JSON mỗi session (auto-gen, gitignore)
+└── package.json
 ```
 
 ---
@@ -163,40 +120,48 @@ Chạy từ **3 nguồn**:
 
 | Lệnh | Usage | Mô tả |
 |------|-------|-------|
-| `.join` | `.join <guild_id> <voice_channel_id>` | Vào voice channel |
-| `.leave` | `.leave` | Rời voice channel hiện tại |
+| `.voice <channel_id>` | `.voice 1234567890` | Vào voice channel (tool tự tìm guild chứa channel) |
+| `.voice` | `.voice` | Hỏi xác nhận rời voice channel hiện tại |
 
-**Lấy guild_id + channel_id:**
+`.voice` không có ID → selfbot hỏi lại. Trả lời **yes** để rời, **no** để ở lại (hết hạn sau 30s).
+
+**Lấy channel_id:**
 - Bật Developer Mode trong Discord → Settings → Advanced → Developer Mode
-- Chuột phải guild → Copy ID
 - Chuột phải voice channel → Copy ID
 
-### Music
+### AFK
 
 | Lệnh | Usage | Mô tả |
 |------|-------|-------|
-| `.play` | `.play <link YouTube>` | Phát nhạc — hỗ trợ YouTube, SoundCloud, 1000+ site |
-| `.stop` | `.stop` | Dừng nhạc + xóa toàn bộ queue |
-| `.skip` | `.skip` | Bỏ qua bài đang phát |
-| `.resume` | `.resume` | Toggle pause/resume |
-| `.queue` | `.queue` | Xem queue (hidden) |
-| `.volume` | `.volume <0-100>` | Set âm lượng (hidden) |
+| `.afk <reason>` | `.afk đang ngủ` | Bật AFK kèm lý do |
+| `.afk` | `.afk` | Bật AFK không lý do (gọi lần 2 = tắt) |
+| `.afk off` | `.afk off` | Tắt AFK |
+| `.afk status` | `.afk status` | Xem trạng thái + thống kê ping |
+| `.afk list` | `.afk list` | Ai đã ping trong lúc AFK |
+| `.afk silent on/off` | `.afk silent on` | Chỉ react emoji, không reply |
 
-**Nguồn nhạc hỗ trợ (từ yt-dlp):**
-- YouTube + YouTube Music
-- SoundCloud
-- Bandcamp
-- Twitch (VOD, live không)
-- Vimeo
-- Dailymotion
-- Mixcloud
-- 1000+ site khác
+Khi AFK:
+- Ai mention / reply / ping role → selfbot reply (hoặc react nếu silent mode)
+- Cooldown mặc định 60s / user (`afk.cooldownMode`: `per_user` | `global` | `none`)
+- Tự tắt AFK khi chính cậu gửi tin nhắn, và thông báo "đã trở lại" vào channel cuối cùng có ping
 
-**Spotify không hỗ trợ stream trực tiếp** — yt-dlp không extract được vì DRM. Nếu cần, phải dùng Spotify API lấy metadata → search YouTube.
+### Snipe
+
+| Lệnh | Usage | Mô tả |
+|------|-------|-------|
+| `.snipe` | `.snipe` | Tin bị xoá gần nhất trong channel |
+| `.snipe <n>` | `.snipe 3` | Tin bị xoá thứ n |
+| `.snipe list` | `.snipe list` | Danh sách tin bị xoá |
+| `.snipe @user` | `.snipe @someone` | Tin bị xoá của user |
+| `.snipe stats` | `.snipe stats` | Thống kê cache |
+| `.snipe clear` | `.snipe clear` | Xoá cache snipe của channel |
+| `.editsnipe` | như trên | Tin bị sửa (alias `.esnipe`) |
+
+Giới hạn 10 tin / channel. Tin gửi trước khi selfbot online sẽ không có nội dung (chỉ còn metadata).
 
 ### Aliases
 
-Aliases mặc định đã bỏ. Mỗi command chỉ gọi bằng tên đầy đủ.
+Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đầy đủ.
 
 ---
 
@@ -229,6 +194,20 @@ Aliases mặc định đã bỏ. Mỗi command chỉ gọi bằng tên đầy đ
     }
   },
 
+  "typingDelay": {
+    "baseMinMs": 500,
+    "baseMaxMs": 1200,
+    "perCharMs": 15,
+    "maxMs": 3500,
+    "jitterMinMs": 0,
+    "jitterMaxMs": 800
+  },
+
+  "antiDetection": {
+    "reactDelayMinMs": 200,
+    "reactDelayMaxMs": 800
+  },
+
   "voice": {
     "autoReconnect": true,
     "reconnectMaxAttempts": 3,
@@ -236,20 +215,22 @@ Aliases mặc định đã bỏ. Mỗi command chỉ gọi bằng tên đầy đ
     "selfMute": false
   },
 
-  "music": {
-    "ytDlpPath": "bin/yt-dlp.exe",
-    "maxQueueSize": 30,
-    "defaultVolume": 50,
-    "maxDurationSec": 1800,
-    "searchLimit": 1,
-    "audioFormat": "bestaudio"
-  },
-
-  "antiDetection": {
-    "typingDelayMinMs": 300,
-    "typingDelayMaxMs": 1500,
-    "reactDelayMinMs": 200,
-    "reactDelayMaxMs": 800
+  "afk": {
+    "cooldownMs": 60000,
+    "cooldownMode": "per_user",
+    "maxReasonLen": 200,
+    "replyTemplate": "Đang AFK: {reason} ({duration})",
+    "noReasonTemplate": "Đang AFK — sẽ trả lời sau ({duration})",
+    "backTemplate": "Đã trở lại — cảm ơn đã ping",
+    "reactEmoji": "💤",
+    "autoDisableOnActivity": true,
+    "announceBack": true,
+    "dmReply": false,
+    "ignoreBots": true,
+    "ignoreUsers": [],
+    "ignoreChannels": [],
+    "silentMode": false,
+    "persist": true
   },
 
   "debug": false
@@ -258,12 +239,19 @@ Aliases mặc định đã bỏ. Mỗi command chỉ gọi bằng tên đầy đ
 
 ### Field reference
 
+**Session:**
+
 | Field | Ý nghĩa |
 |-------|---------|
 | `sessionMaxMinutes` | Thời gian session tối đa (phút) — tự dừng khi hết |
 | `sessionWarnMinutes` | Cảnh báo khi đạt (phút) |
 | `sessionAutoStop` | `true` → tự dừng khi hết session |
 | `sessionLogFile` | File ghi log cuối mỗi session |
+
+**Status + commands:**
+
+| Field | Ý nghĩa |
+|-------|---------|
 | `status.type` | `PLAYING` / `LISTENING` / `WATCHING` / `STREAMING` / `COMPETING` — set 1 lần khi ready |
 | `status.text` | Nội dung status |
 | `commands.prefix` | Ký tự prefix — mặc định `.` |
@@ -276,24 +264,46 @@ Aliases mặc định đã bỏ. Mỗi command chỉ gọi bằng tên đầy đ
 | `commands.rateLimit.cooldownMs` | Cooldown giữa 2 lệnh (ms) |
 | `commands.rateLimit.ignoreDuplicateMs` | Bỏ qua lệnh trùng trong X ms |
 | `commands.rateLimit.silentOnLimit` | `true` → không reply khi bị limit |
+
+**Delay:**
+
+| Field | Ý nghĩa |
+|-------|---------|
+| `typingDelay.baseMinMs` / `baseMaxMs` | Delay nền trước khi gửi reply (random trong khoảng) |
+| `typingDelay.perCharMs` | Cộng thêm theo độ dài tin nhắn |
+| `typingDelay.maxMs` | Trần phần cộng theo độ dài |
+| `typingDelay.jitterMinMs` / `jitterMaxMs` | Jitter cộng thêm |
+| `antiDetection.reactDelayMinMs` / `reactDelayMaxMs` | Delay trước khi reply trong dispatcher |
+
+**Voice + AFK:**
+
+| Field | Ý nghĩa |
+|-------|---------|
 | `voice.autoReconnect` | Tự reconnect khi mất kết nối voice |
+| `voice.reconnectMaxAttempts` | Số lần thử reconnect tối đa |
 | `voice.selfDeaf` | Tự deaf khi vào voice |
 | `voice.selfMute` | Tự mute khi vào voice |
-| `music.ytDlpPath` | Path đến yt-dlp binary |
-| `music.maxQueueSize` | Số bài tối đa trong queue |
-| `music.defaultVolume` | Âm lượng mặc định 0-100 |
-| `music.maxDurationSec` | Thời lượng bài tối đa (giây) |
-| `music.searchLimit` | Số kết quả search (dùng cho `.play <query>`) |
-| `music.audioFormat` | Format yt-dlp dùng (bestaudio/best) |
-| `antiDetection.typingDelayMinMs` | Delay tối thiểu trước khi reply (ms) |
-| `antiDetection.typingDelayMaxMs` | Delay tối đa trước khi reply (ms) |
+| `afk.cooldownMs` | Cooldown giữa 2 lần reply cho cùng người ping |
+| `afk.cooldownMode` | `per_user` / `global` / `none` |
+| `afk.maxReasonLen` | Độ dài lý do tối đa |
+| `afk.replyTemplate` | Template khi có lý do — biến: `{user}` `{tag}` `{reason}` `{duration}` `{pings}` |
+| `afk.noReasonTemplate` | Template khi không có lý do |
+| `afk.backTemplate` | Tin nhắn "đã trở lại" — biến: `{duration}` |
+| `afk.reactEmoji` | Emoji react khi có ping (rỗng = không react) |
+| `afk.autoDisableOnActivity` | Tự tắt AFK khi cậu gửi tin nhắn |
+| `afk.announceBack` | Gửi tin "đã trở lại" vào channel cuối có ping |
+| `afk.dmReply` | Reply cả DM không mention |
+| `afk.ignoreBots` | Bỏ qua ping từ bot |
+| `afk.ignoreUsers` / `ignoreChannels` | Danh sách ID bỏ qua |
+| `afk.silentMode` | Chỉ react, không reply |
+| `afk.persist` | Lưu AFK state vào `.afk.json` (khôi phục sau restart, tối đa 24h) |
 | `debug` | `true` → in log debug |
 
 ---
 
 ## RPC — `rpc.json`
 
-Rich Presence config riêng. Không cần restart selfbot nếu dùng `.reload` (chưa có).
+Rich Presence config riêng, đọc 1 lần khi ready.
 
 ```json
 {
@@ -404,31 +414,29 @@ Hoặc dùng external URL (Imgur, GitHub raw):
 `tokens.txt` nên `chmod 600`. Selfbot tự warn nếu phát hiện permission mở.
 
 ```bash
-chmod 600 "Selt Bot Discord/tokens.txt"
-chmod 600 "Self Bot/rpc.json"
-chmod 600 "Self Bot/session.log"
+chmod 600 tokens.txt
+chmod 600 rpc.json
+chmod 600 session.log
+chmod 600 .afk.json
 ```
 
-### Anti-detection
+### Chỉ nhận lệnh từ chính mình
 
 | Cơ chế | Chi tiết |
 |--------|----------|
 | **Chặn author** | Chỉ nhận lệnh từ chính selfbot user — `msg.author.id === client.user.id` |
 | **Whitelist channel** | Chỉ DM self + channel có ID trong `channel.txt` |
-| **Typing delay** | 300-1500ms trước khi gửi reply |
-| **React delay** | 200-800ms sau khi nhận lệnh |
 | **Rate limit window** | 10 lệnh / 60s |
 | **Cooldown** | 1.5s giữa các lệnh |
 | **Duplicate filter** | Bỏ qua lệnh trùng trong 3s |
-| **Silent on limit** | Không reply khi bị limit — tránh pattern |
-| **Session cap** | Tự dừng sau 2-6h |
+| **Silent on limit** | Không reply khi bị limit |
+| **Session cap** | Tự dừng sau `sessionMaxMinutes` |
 
 ### Khi nào có thể bị flag
 
 - Gửi nhiều lệnh liên tục (vượt rate limit)
 - Mass DM / auto-reply
 - Join/leave voice liên tục
-- Spam play/skip
 - Chạy 24/7 không nghỉ
 
 ---
@@ -445,9 +453,10 @@ chmod 600 "Self Bot/session.log"
 
 **Events lắng nghe:**
 - `ready` — client khởi động xong
-- `messageCreate` — filter + dispatch command
+- `messageCreate` — filter + dispatch command, cache tin, AFK
+- `messageDelete`, `messageUpdate` — snipe
 - `error`, `warn` — log
-- `rateLimited` — log + backoff
+- `rateLimited` — log
 - `shardDisconnect`, `shardReconnecting`, `shardResume`, `shardError` — log
 
 ### Voice Gateway (qua `@discordjs/voice`)
@@ -465,31 +474,6 @@ chmod 600 "Self Bot/session.log"
 
 **UDP:** RTP packet qua UDP hole punching.
 
-### yt-dlp
-
-Binary external, spawn qua `child_process.spawn()`.
-
-**Metadata mode:**
-```bash
-yt-dlp -j --no-playlist --no-warnings -f bestaudio "ytsearch1:query"
-```
-→ JSON metadata.
-
-**Stream mode:**
-```bash
-yt-dlp -f bestaudio -o - --no-playlist --no-warnings "url"
-```
-→ PCM/Opus audio qua stdout → pipe vào `@discordjs/voice`.
-
-### ffmpeg (qua `ffmpeg-static`)
-
-`@discordjs/voice` dùng ffmpeg để transcode audio từ yt-dlp output sang Opus.
-
-Path auto-set từ `ffmpeg-static` package:
-```js
-process.env.FFMPEG_PATH = ffmpegStatic;
-```
-
 ### Discord Rich Presence (gateway)
 
 Gửi qua `client.user.setPresence()`:
@@ -500,7 +484,7 @@ client.user.setPresence({
 });
 ```
 
-Activity object theo docs `docs.discord.food`:
+Activity object:
 ```js
 {
   name, type, url,
@@ -536,7 +520,7 @@ Config:
 - Gửi `.cmd` 2 lần trong 3s → lần 2 bị ignore (duplicate)
 - Gửi `.cmd` rồi `.ping` sau 1s → bị block (cooldown 1.5s)
 - Gửi 15 lệnh trong 1 phút → lệnh 11+ bị block (window)
-- `silentOnLimit: true` → không reply khi bị block (không có dấu hiệu)
+- `silentOnLimit: true` → không reply khi bị block
 
 **Console không bị rate limit** — chỉ DM + channel.
 
@@ -556,34 +540,23 @@ File `session.log` — JSON Lines format. Mỗi session 1 dòng:
 
 Xem log cũ:
 ```bash
-type "Self Bot/session.log"
+type session.log
 # hoặc
-tail -f "Self Bot/session.log"   # Unix
+tail -f session.log   # Unix
 ```
 
 ---
 
 ## Troubleshooting
 
-### `Cannot find module 'ffmpeg-static'`
+### Thiếu deps / `Cannot find module`
 ```bash
-cd "Self Bot"
-npm install ffmpeg-static
+npm install
 ```
 
-Verify:
-```bash
-dir node_modules\ffmpeg-static\ffmpeg.exe
-```
-
-### `yt-dlp không tồn tại: bin/yt-dlp.exe`
-Tải lại binary. Đặt đúng chỗ. Đổi path trong `config.json` → `music.ytDlpPath` nếu để folder khác.
-
-### `.play` không phát nhạc
-- Đã `.join` voice chưa?
-- Bot có quyền vào voice channel không?
-- Kiểm tra log — có `yt-dlp exit ...` không?
-- Link YouTube có hợp lệ không?
+### `Không có token trong ...tokens.txt`
+- Tạo `tokens.txt` ở root project, mỗi dòng 1 token
+- Bỏ dòng trống và comment (`#`)
 
 ### Voice timeout 30s
 - Firewall block UDP → mở port hoặc tắt firewall tạm
@@ -594,6 +567,14 @@ Tải lại binary. Đặt đúng chỗ. Đổi path trong `config.json` → `mu
 - Token đúng chưa? Login thành công chưa?
 - `dmSelfEnabled: true` trong config?
 - Debug: bật `debug: true`, chạy lại, xem log có `Recv:` không
+
+### `.snipe` không có nội dung tin
+- Tin đó gửi trước khi selfbot online → không có trong cache
+- Cache giữ 30 phút / tối đa 2000 tin
+
+### Console không nhận lệnh
+- `consoleEnabled: true` trong config?
+- Dashboard chiếm stdin — gõ lệnh trực tiếp vào terminal đang chạy, không mở terminal khác
 
 ### RPC không hiện assets
 - `application_id` hợp lệ chưa (18-19 số)?
@@ -613,4 +594,4 @@ Private use. Not for redistribution.
 
 ## Credits
 
-Built by Lumina 
+Built by Lumina

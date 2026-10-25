@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# Secrets
+tokens.txt
+
+# Runtime state
+.afk.json
+
 # Logs
 *.log
 logs/
