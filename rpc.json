@@ -1,9 +1,12 @@
 {
-  "_help": "Đọc README.md section RPC để biết chi tiết field",
-  "_version": 4,
+  "_help": "Xem read.md section RPC để biết chi tiết. Key bắt đầu bằng _ bị bỏ qua.",
+  "_version": 5,
 
   "enabled": true,
   "applyOnReady": true,
+  "hotReload": true,
+  "refreshInterval": 60,
+  "templates": true,
   "status": "online",
 
   "application_id": "",
@@ -11,9 +14,7 @@
   "type": "PLAYING",
 
   "details": "Editing",
-  "details_url": "",
   "state": "index.js",
-  "state_url": "",
 
   "stream_url": "",
 
@@ -23,18 +24,17 @@
 
   "large_image": "",
   "large_text": "",
-  "large_url": "",
 
   "small_image": "",
   "small_text": "",
-  "small_url": "",
 
+  "buttons": [],
   "button1_label": "",
   "button1_url": "",
   "button2_label": "",
   "button2_url": "",
 
   "timestamp_mode": "start",
-  "start_timestamp": 0,
+  "start_timestamp": "now",
   "end_timestamp": 0
 }

@@ -15,9 +15,11 @@ import {
   getConfig as getAfkConfig,
 } from './afk.js';
 import { leaveVoice, getVoiceState } from './voiceSession.js';
-import { isPending, cancel } from './voiceConfirm.js';
+import { isStreaming } from './stream.js';
+import { isPending, cancel, getPendingChannel } from './voiceConfirm.js';
 import { recordDelete, recordEdit } from './snipe.js';
 import { cacheMessage } from './messageCache.js';
+import { getRpcState } from './rpc.js';
 
 export function createSelfbotClient({ config, logger, stats, dispatcher }) {
   const log = logger;
@@ -38,7 +40,10 @@ export function createSelfbotClient({ config, logger, stats, dispatcher }) {
   client.on('ready', () => {
     const u = client.user;
     log.ok(`Ready: ${u.tag} (${u.id})`);
-    applyPresence(client, config, { logger, stats });
+    // RPC (nếu bật) sẽ set presence ngay sau ready — tránh ghi đè ngược
+    if (!getRpcState().enabled) {
+      applyPresence(client, config, { logger, stats });
+    }
   });
 
   client.on('error', (err) => {
@@ -138,8 +143,20 @@ async function handleVoiceConfirm(client, msg, config, log, stats) {
 
   if (!isPending()) return false;
 
+  // Confirm chỉ có hiệu lực trong channel đã bắt đầu confirm
+  if (getPendingChannel() !== msg.channel?.id) return false;
+
   const content = msg.content.trim().toLowerCase();
   if (content !== 'yes' && content !== 'no') return false;
+
+  if (isStreaming()) {
+    cancel();
+    const replyText = 'Đang stream — dùng .stream stop trước khi đổi voice';
+    await sleep(computeTypingDelay(replyText, config));
+    const sent = await msg.reply(replyText).catch(() => null);
+    if (sent) markCodeSent(sent.id);
+    return true;
+  }
 
   if (content === 'yes') {
     const vs = getVoiceState();

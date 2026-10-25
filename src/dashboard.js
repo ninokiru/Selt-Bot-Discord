@@ -34,7 +34,46 @@ function fit(s, n) {
 }
 
 export function createDashboard(options = {}) {
+  const headless = options.headless === true || !process.stdout.isTTY;
   let onQuitExternal = typeof options.onQuit === 'function' ? options.onQuit : () => {};
+
+  // Headless: no blessed screen, no timers — plain stdout log stream only.
+  if (headless) {
+    return {
+      screen: null,
+      header: null,
+      sessionBox: null,
+      statsBox: null,
+      commandsBox: null,
+      log: null,
+      status: null,
+
+      appendLog(line) {
+        const clean = String(line ?? '').replace(ANSI_RE, '');
+        try { process.stdout.write(clean + '\n'); } catch {}
+      },
+
+      setRunning() {},
+      setUser() {},
+      setStatus() {},
+      setVoice() {},
+      setGuilds() {},
+      setPing() {},
+      setSessionMax() {},
+      setSessionElapsed() {},
+      setStats() {},
+      setAfk() {},
+      setStream() {},
+      setRpc() {},
+
+      onQuit(handler) {
+        onQuitExternal = typeof handler === 'function' ? handler : () => {};
+      },
+
+      destroy() {},
+      render() {},
+    };
+  }
 
   const screen = blessed.screen({
     smartCSR: true,
@@ -88,12 +127,32 @@ export function createDashboard(options = {}) {
       commandsExecuted: 0,
       commandsFailed: 0,
       errors: 0,
+      warns: 0,
       voiceJoins: 0,
       voiceLeaves: 0,
       voiceReconnects: 0,
       presenceUpdates: 0,
       afkPings: 0,
       afkReplies: 0,
+      streamStarts: 0,
+      streamStops: 0,
+      rpcApplies: 0,
+      rpcErrors: 0,
+    },
+    stream: {
+      active: false,
+      starting: false,
+      startedAt: 0,
+      viewerCount: 0,
+      channelName: '',
+      guildName: '',
+      lastError: '',
+    },
+    rpc: {
+      enabled: false,
+      name: '',
+      status: '',
+      lastError: '',
     },
   };
   let spinnerIdx = 0;
@@ -106,13 +165,13 @@ export function createDashboard(options = {}) {
     border: { type: 'line' },
     style: { border: { fg: 'cyan' }, fg: 'white' },
     label: ` {bold}{cyan-fg}Lumina Selfbot{/cyan-fg}{/bold} {gray-fg}v${VERSION}{/gray-fg} `,
-    content: ' {gray-fg}gateway · voice · afk · snipe · rich presence · session{/gray-fg}',
+    content: ' {gray-fg}gateway · voice · stream · afk · snipe · rpc · session{/gray-fg}',
   });
 
   // ── Session panel ────────────────────────────────────────
   const sessionBox = blessed.box({
     parent: screen,
-    top: 3, left: 0, width: '100%', height: 6,
+    top: 3, left: 0, width: '100%', height: 7,
     tags: true,
     border: { type: 'line' },
     style: { border: { fg: 'gray' }, fg: 'white' },
@@ -123,7 +182,7 @@ export function createDashboard(options = {}) {
   // ── Stats panel ──────────────────────────────────────────
   const statsBox = blessed.box({
     parent: screen,
-    top: 9, left: 0, width: '100%', height: 6,
+    top: 10, left: 0, width: '100%', height: 7,
     tags: true,
     border: { type: 'line' },
     style: { border: { fg: 'gray' }, fg: 'white' },
@@ -134,19 +193,19 @@ export function createDashboard(options = {}) {
   // ── Commands hint ────────────────────────────────────────
   const commandsBox = blessed.box({
     parent: screen,
-    top: 15, left: 0, width: '100%', height: 3,
+    top: 17, left: 0, width: '100%', height: 3,
     tags: true,
     border: { type: 'line' },
     style: { border: { fg: 'cyan' }, fg: 'white' },
     label: ' Commands ',
     content:
-      ' {gray-fg}.cmd  .ping  .uptime  .voice  .afk  .snipe  .editsnipe{/gray-fg}',
+      ' {gray-fg}.voice  .stream  .rpc  .afk  .snipe  .editsnipe  ·  .cmd  .ping  .uptime  .exit{/gray-fg}',
   });
 
   // ── Log ──────────────────────────────────────────────────
   const log = blessed.log({
     parent: screen,
-    top: 18, left: 0, width: '100%', height: '100%-19',
+    top: 20, left: 0, width: '100%', height: '100%-21',
     tags: false,
     wrap: false,
     scrollable: true,
@@ -231,7 +290,9 @@ export function createDashboard(options = {}) {
       cell('Duration', afkDuration) +
       cell('Reason', afkReason);
 
-    sessionBox.setContent([line1, line2, line3, line4, line5].join('\n'));
+    sessionBox.setContent(
+      [line1, line2, line3, line4, line5].map((l) => l.trimEnd()).join('\n')
+    );
   }
 
   function refreshStats() {
@@ -269,11 +330,19 @@ export function createDashboard(options = {}) {
 
     const line4 =
       '  ' +
+      cell('Stream start', s.streamStarts, s.streamStarts > 0 ? 'green' : null) +
+      cell('Stream stop', s.streamStops, s.streamStops > 0 ? 'yellow' : null) +
+      cell('Errors', s.errors, s.errors > 0 ? 'red' : null);
+
+    const line5 =
+      '  ' +
       cell('AFK pings', s.afkPings, s.afkPings > 0 ? 'yellow' : null) +
       cell('AFK reply', s.afkReplies, s.afkReplies > 0 ? 'green' : null) +
-      cell('Presence', s.presenceUpdates);
+      cell('Warns', s.warns, s.warns > 0 ? 'yellow' : null);
 
-    statsBox.setContent([line1, line2, line3, line4].join('\n'));
+    statsBox.setContent(
+      [line1, line2, line3, line4, line5].map((l) => l.trimEnd()).join('\n')
+    );
   }
 
   function refreshStatus() {
@@ -300,6 +369,29 @@ export function createDashboard(options = {}) {
 
     if (state.voice && state.voice !== 'Not connected') {
       parts.push(`{cyan-fg}${state.voice}{/cyan-fg}`);
+    }
+
+    if (state.stream.active) {
+      const viewers = Math.max(0, state.stream.viewerCount | 0);
+      const dur = state.stream.startedAt > 0
+        ? fmtDur((Date.now() - state.stream.startedAt) / 1000)
+        : '0s';
+      parts.push(
+        `{red-fg}LIVE{/red-fg} · {bold}${viewers} viewers{/bold} · ${dur}`
+      );
+    } else if (state.stream.starting) {
+      parts.push('{yellow-fg}STREAM STARTING{/yellow-fg}');
+    }
+
+    if (state.rpc.enabled) {
+      const rpcName = String(state.rpc.name || '').trim();
+      if (rpcName) {
+        const short = rpcName.length > 24 ? `${rpcName.slice(0, 23)}…` : rpcName;
+        const color = state.rpc.lastError ? 'red' : 'magenta';
+        parts.push(`{${color}-fg}RPC: ${blessed.escape(short)}{/${color}-fg}`);
+      } else if (state.rpc.lastError) {
+        parts.push('{red-fg}RPC error{/red-fg}');
+      }
     }
 
     parts.push(`{gray-fg}.cmd trong console · esc quit · ctrl+c force{/gray-fg}`);
@@ -416,6 +508,33 @@ export function createDashboard(options = {}) {
         silent: !!afk.silentMode,
       };
       refreshSession();
+      refreshStatus();
+      invalidate();
+    },
+
+    setStream(st) {
+      if (!st) return;
+      state.stream = {
+        active: !!st.active,
+        starting: !!st.starting,
+        startedAt: Number(st.startedAt) || 0,
+        viewerCount: Number(st.viewerCount) || 0,
+        channelName: st.channelName || '',
+        guildName: st.guildName || '',
+        lastError: st.lastError || '',
+      };
+      refreshStatus();
+      invalidate();
+    },
+
+    setRpc(rpc) {
+      if (!rpc) return;
+      state.rpc = {
+        enabled: !!rpc.enabled,
+        name: rpc.name || '',
+        status: rpc.status || '',
+        lastError: rpc.lastError || '',
+      };
       refreshStatus();
       invalidate();
     },

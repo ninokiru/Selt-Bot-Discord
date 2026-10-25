@@ -1,6 +1,6 @@
 # Lumina Selfbot
 
-Gateway selfbot cho Discord — voice · afk · snipe · RPC · session-based.
+Gateway selfbot cho Discord — voice · stream · afk · snipe · RPC · session-based.
 
 ---
 
@@ -16,9 +16,10 @@ Gateway selfbot cho Discord — voice · afk · snipe · RPC · session-based.
 
 ## Yêu cầu
 
-- **Node.js >= 20**
+- **Node.js >= 22.12** — bắt buộc, vì `@discordjs/voice` 0.19 dùng DAVE (E2EE)
+- **ffmpeg có libx264** — `npm install` cài `ffmpeg-static` (optional); hoặc cài ffmpeg vào PATH
 - **Windows / Linux / macOS**
-- Token Discord user account
+- Token Discord user account — đọc từ biến môi trường `DISCORD_TOKEN` hoặc `tokens.txt`
 - (Tùy chọn) Discord Developer Application — để dùng RPC assets + buttons
 
 ---
@@ -29,6 +30,10 @@ Gateway selfbot cho Discord — voice · afk · snipe · RPC · session-based.
 cd "Selt-Bot-Discord-Beta"
 npm install
 ```
+
+`npm install` có thể lâu hơn bình thường vì `ffmpeg-static` tải binary ffmpeg (optional — nếu fail vẫn cài được, khi đó cần ffmpeg trong PATH).
+
+> `package-lock.json` trong repo được tạo từ bản cũ (voice 0.18). Chạy `npm install` một lần để npm tự đồng bộ lock với `package.json` hiện tại (voice 0.19.2).
 
 ### Bước 1 — Token
 
@@ -42,6 +47,18 @@ MTIzNDU2Nzg5.MTk4NzY1NDM.WXYZ...
 - Selfbot đọc **token đầu tiên** trong file
 - `tokens.txt` đã nằm trong `.gitignore` — không commit
 
+Hoặc dùng biến môi trường — ưu tiên hơn file:
+
+```bash
+# Windows PowerShell
+$env:DISCORD_TOKEN="MTIz..."
+
+# Linux / macOS
+export DISCORD_TOKEN="MTIz..."
+```
+
+Tên biến đổi được qua `config.json` → `tokenEnv`.
+
 ### Bước 2 — Config
 
 Xem section **Config** bên dưới.
@@ -52,7 +69,7 @@ Xem section **Config** bên dưới.
 npm start
 ```
 
-Selfbot khởi động, dashboard hiện ra.
+Selfbot khởi động. Có TTY → dashboard TUI; không có TTY hoặc `dashboard: false` → chạy headless, log ra stdout.
 
 ---
 
@@ -63,17 +80,19 @@ Selt-Bot-Discord-Beta/
 ├── src/
 │   ├── index.js                Entry point — load config, login, orchestrate
 │   ├── client.js               Gateway wrapper (discord.js-selfbot-v13)
-│   ├── dashboard.js            TUI — panel Session / Stats / Commands / Log
+│   ├── dashboard.js            TUI — Session / Stats / Commands / Log (có headless)
 │   ├── logger.js               Log với ANSI levels
 │   ├── shutdown.js             Global shutdown flag
 │   ├── session.js              Session timer + log end
-│   ├── stats.js                Counter runtime (messages, cmds, voice...)
+│   ├── stats.js                Counter runtime (messages, cmds, voice, stream, rpc...)
+│   ├── config.js               Load config + defaults + validate/clamp
 │   ├── voiceSession.js         Join/leave voice + auto reconnect
-│   ├── voiceConfirm.js         Trạng thái chờ xác nhận yes/no
-│   ├── rpc.js                  Rich Presence — đọc từ rpc.json
+│   ├── stream.js               Go Live — capture màn hình + native stream connection
+│   ├── voiceConfirm.js         Trạng thái chờ xác nhận yes/no (scoped theo channel)
+│   ├── rpc.js                  Rich Presence — template, hot reload, external assets
 │   ├── afk.js                  AFK state, cooldown, template, persist
-│   ├── snipe.js                Lưu tin bị xoá / bị sửa theo channel
-│   ├── messageCache.js         Cache nội dung tin (30 phút, tối đa 2000)
+│   ├── snipe.js                Lưu tin bị xoá / bị sửa theo channel (+ TTL, LRU)
+│   ├── messageCache.js         Cache nội dung tin (30 phút, tối đa 2000, LRU)
 │   ├── utils.js                Helpers (sleep, randInt, readJson, typing delay...)
 │   └── commands/
 │       ├── index.js            Registry + dispatcher + console + rate limit
@@ -81,6 +100,8 @@ Selt-Bot-Discord-Beta/
 │       ├── ping.js             .ping
 │       ├── uptime.js           .uptime
 │       ├── voice.js            .voice
+│       ├── stream.js           .stream
+│       ├── rpc.js              .rpc
 │       ├── afk.js              .afk
 │       ├── snipe.js            .snipe + .editsnipe
 │       └── exit.js             .exit (hidden)
@@ -112,6 +133,7 @@ Chạy từ **3 nguồn**:
 | Lệnh | Usage | Mô tả |
 |------|-------|-------|
 | `.cmd` | `.cmd` | List tất cả command khả dụng |
+| `.cmd <name>` | `.cmd rpc` | Chi tiết 1 command (usage, alias, mô tả) |
 | `.ping` | `.ping` | Gateway latency (ms) |
 | `.uptime` | `.uptime` | Thời gian chạy + phần trăm session |
 | `.exit` | `.exit` | Dừng selfbot (hidden — không show trong `.cmd`) |
@@ -122,12 +144,45 @@ Chạy từ **3 nguồn**:
 |------|-------|-------|
 | `.voice <channel_id>` | `.voice 1234567890` | Vào voice channel (tool tự tìm guild chứa channel) |
 | `.voice` | `.voice` | Hỏi xác nhận rời voice channel hiện tại |
+| `.voice leave` | `.voice leave` | Hỏi xác nhận rời (tường minh) |
+| `.voice status` | `.voice status` | Trạng thái voice + reconnect attempts + lỗi cuối |
+| `.voice list [guild_id]` | `.voice list` | Liệt kê voice channel có thể join |
 
 `.voice` không có ID → selfbot hỏi lại. Trả lời **yes** để rời, **no** để ở lại (hết hạn sau 30s).
+Xác nhận chỉ có hiệu lực trong **đúng channel** đã gửi lời hỏi — tin "yes"/"no" ở channel khác bị bỏ qua.
+Gõ từ **console** thì không có channel để hỏi — `.voice` / `.voice leave` rời voice ngay.
 
 **Lấy channel_id:**
 - Bật Developer Mode trong Discord → Settings → Advanced → Developer Mode
 - Chuột phải voice channel → Copy ID
+
+### Stream (Go Live)
+
+| Lệnh | Usage | Mô tả |
+|------|-------|-------|
+| `.stream` | `.stream` | Stream màn hình vào voice channel hiện tại |
+| `.stream <channel_id>` | `.stream 1234567890` | Vào channel đó rồi stream |
+| `.stream status` | `.stream status` | Trạng thái stream (viewer, thời lượng, lỗi cuối) |
+| `.stream stop` | `.stream stop` | Dừng stream + khôi phục voice (nếu `restoreVoice`) |
+
+- Stream dùng **native voice stack** của lib để tạo Go Live, nên tạm rời `@discordjs/voice`; khi stop sẽ join lại channel cũ (nếu `restoreVoice: true`).
+- Trong lúc stream, `.voice` bị chặn — dừng stream trước khi đổi voice.
+- Capture mặc định: toàn màn hình (Windows `gdigrab`), 1280×720 @ 30fps, 2500 kbps.
+- Video được ép `yuv420p` + keyframe 2s để tránh màn hình đen.
+
+**DAVE/E2EE (quan trọng):** từ 03/2026 Discord bắt buộc DAVE cho voice + Go Live.
+`@discordjs/voice` 0.19.2 đã hỗ trợ DAVE nên `.voice` hoạt động bình thường.
+Native stack của `discord.js-selfbot-v13` **chưa hỗ trợ DAVE**, nên `.stream` có thể bị Discord từ chối (join fail/timeout) — khi đó code sẽ báo lỗi kèm gợi ý DAVE.
+
+### Presence
+
+| Lệnh | Usage | Mô tả |
+|------|-------|-------|
+| `.rpc` / `.rpc status` | `.rpc status` | Xem trạng thái RPC hiện tại |
+| `.rpc reload` / `.rpc on` | `.rpc reload` | Đọc lại `rpc.json` và áp dụng ngay |
+| `.rpc off` | `.rpc off` | Tắt RPC tạm thời (quay về `status` trong config) |
+
+Alias: `.presence`.
 
 ### AFK
 
@@ -161,7 +216,10 @@ Giới hạn 10 tin / channel. Tin gửi trước khi selfbot online sẽ không
 
 ### Aliases
 
-Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đầy đủ.
+- `.editsnipe` → `.esnipe`
+- `.rpc` → `.presence`
+
+Các command khác gọi bằng tên đầy đủ.
 
 ---
 
@@ -173,6 +231,8 @@ Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đ�
   "sessionWarnMinutes": 300,
   "sessionAutoStop": true,
   "sessionLogFile": "session.log",
+  "dashboard": true,
+  "tokenEnv": "DISCORD_TOKEN",
 
   "status": {
     "type": "PLAYING",
@@ -215,6 +275,18 @@ Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đ�
     "selfMute": false
   },
 
+  "stream": {
+    "enabled": true,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "bitrateKbps": 2500,
+    "preset": "faster",
+    "captureSource": "",
+    "captureCursor": true,
+    "restoreVoice": true
+  },
+
   "afk": {
     "cooldownMs": 60000,
     "cooldownMode": "per_user",
@@ -246,13 +318,15 @@ Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đ�
 | `sessionMaxMinutes` | Thời gian session tối đa (phút) — tự dừng khi hết |
 | `sessionWarnMinutes` | Cảnh báo khi đạt (phút) |
 | `sessionAutoStop` | `true` → tự dừng khi hết session |
-| `sessionLogFile` | File ghi log cuối mỗi session |
+| `sessionLogFile` | File ghi log cuối mỗi session (đường dẫn tương đối tính từ root project) |
+| `dashboard` | `false` → chạy headless (chỉ log ra stdout; cũng tự bật khi không có TTY) |
+| `tokenEnv` | Tên biến môi trường chứa token (mặc định `DISCORD_TOKEN`) |
 
 **Status + commands:**
 
 | Field | Ý nghĩa |
 |-------|---------|
-| `status.type` | `PLAYING` / `LISTENING` / `WATCHING` / `STREAMING` / `COMPETING` — set 1 lần khi ready |
+| `status.type` | `PLAYING` / `LISTENING` / `WATCHING` / `STREAMING` / `COMPETING` / `CUSTOM` — set 1 lần khi ready (bị RPC ghi đè nếu RPC bật) |
 | `status.text` | Nội dung status |
 | `commands.prefix` | Ký tự prefix — mặc định `.` |
 | `commands.dmSelfEnabled` | Nhận lệnh từ DM self |
@@ -283,6 +357,14 @@ Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đ�
 | `voice.reconnectMaxAttempts` | Số lần thử reconnect tối đa |
 | `voice.selfDeaf` | Tự deaf khi vào voice |
 | `voice.selfMute` | Tự mute khi vào voice |
+| `stream.enabled` | `false` → chặn `.stream` |
+| `stream.width` / `height` | Độ phân giải output (mặc định 1280×720) |
+| `stream.fps` | Frame rate (5-60, mặc định 30) |
+| `stream.bitrateKbps` | Bitrate video (500-8000) |
+| `stream.preset` | Preset libx264: `ultrafast` … `veryslow` |
+| `stream.captureSource` | Nguồn capture. Windows: `desktop`, `title=Tên cửa sổ`, `hwnd=0x...`; Linux: `:0.0`; macOS: `1:none` |
+| `stream.captureCursor` | Hiện con trỏ chuột trong stream |
+| `stream.restoreVoice` | `true` → join lại voice cũ sau khi stop stream |
 | `afk.cooldownMs` | Cooldown giữa 2 lần reply cho cùng người ping |
 | `afk.cooldownMode` | `per_user` / `global` / `none` |
 | `afk.maxReasonLen` | Độ dài lý do tối đa |
@@ -299,16 +381,21 @@ Chỉ `.editsnipe` có alias `.esnipe`. Các command khác gọi bằng tên đ�
 | `afk.persist` | Lưu AFK state vào `.afk.json` (khôi phục sau restart, tối đa 24h) |
 | `debug` | `true` → in log debug |
 
+Config được **validate + clamp** khi load: giá trị sai kiểu/ngoài khoảng sẽ bị thay bằng mặc định và log cảnh báo (`Config: ...`). Field thiếu được bù từ defaults trong `src/config.js`.
+
 ---
 
 ## RPC — `rpc.json`
 
-Rich Presence config riêng, đọc 1 lần khi ready.
+Rich Presence config riêng. Áp dụng khi ready, **hot reload** khi file thay đổi, và refresh định kỳ.
 
 ```json
 {
   "enabled": true,
   "applyOnReady": true,
+  "hotReload": true,
+  "refreshInterval": 60,
+  "templates": true,
   "status": "online",
 
   "application_id": "1100000000000000000",
@@ -316,9 +403,7 @@ Rich Presence config riêng, đọc 1 lần khi ready.
   "type": "PLAYING",
 
   "details": "Editing",
-  "details_url": "",
   "state": "index.js",
-  "state_url": "",
 
   "stream_url": "",
 
@@ -328,12 +413,13 @@ Rich Presence config riêng, đọc 1 lần khi ready.
 
   "large_image": "",
   "large_text": "",
-  "large_url": "",
 
   "small_image": "",
   "small_text": "",
-  "small_url": "",
 
+  "buttons": [
+    { "label": "GitHub", "url": "https://github.com/" }
+  ],
   "button1_label": "",
   "button1_url": "",
   "button2_label": "",
@@ -344,6 +430,36 @@ Rich Presence config riêng, đọc 1 lần khi ready.
   "end_timestamp": 0
 }
 ```
+
+**Cơ chế:**
+
+| Field | Ý nghĩa |
+|-------|---------|
+| `enabled` | `false` → tắt RPC, dùng `status` trong `config.json` (`.rpc on` bật tạm, bỏ qua cờ này) |
+| `applyOnReady` | `false` → không áp dụng lúc khởi động (vẫn dùng được `.rpc reload`) |
+| `hotReload` | `true` → tự reload khi `rpc.json` đổi (debounce) |
+| `refreshInterval` | Giây giữa các lần refresh; tối thiểu 15, mặc định 60; `0` = tắt |
+| `templates` | `true` → render biến trong text (xem bên dưới) |
+
+**Template variables** — dùng trong `details`, `state`, `large_text`, `small_text`, `party_id`, `stream_url`, `button*_label`:
+
+| Biến | Giá trị |
+|------|---------|
+| `{user}` | Username |
+| `{tag}` | Tag đầy đủ |
+| `{id}` | User ID |
+| `{guilds}` | Số guild |
+| `{ping}` | Gateway ping (ms) |
+| `{uptime}` | Thời gian selfbot chạy |
+| `{clock}` | Giờ hiện tại `HH:MM` |
+| `{date}` | Ngày hiện tại `YYYY-MM-DD` |
+| `{status}` | Trạng thái online/idle/dnd |
+
+**Buttons:** hỗ trợ tối đa 2 nút. Có thể dùng mảng `buttons: [{ label, url }]`, hoặc 2 cặp `button1_label`/`button1_url`, `button2_label`/`button2_url`. URL phải là `http(s)://`.
+
+Các field `details_url`, `state_url`, `large_url`, `small_url` **không còn được hỗ trợ** — gateway của selfbot không serialize chúng, nên đã bỏ khỏi config mẫu.
+
+Text dùng font "fancy" (mathematical/fullwidth) sẽ bị Discord ẩn — tool tự strip các ký tự đó.
 
 ### Cách lấy `application_id` + upload ảnh
 
@@ -362,7 +478,9 @@ Hoặc dùng external URL (Imgur, GitHub raw):
 "large_image": "https://i.imgur.com/abc123.png"
 ```
 
-**Lưu ý:** URL phải là **direct link** (kết thúc `.png`/`.jpg`/`.webp`).
+Tool sẽ **upload external asset** qua Discord (`RichPresence.getExternal`) rồi dùng path trả về — cache 1 giờ cho URL thành công, 5 phút cho URL lỗi.
+
+**Lưu ý:** URL phải là **direct link** (kết thúc `.png`/`.jpg`/`.webp`). Discord CDN URL dùng trực tiếp được; URL ngoài sẽ upload qua app đã đăng ký (cần `application_id`).
 
 ### Timestamp formats
 
@@ -472,7 +590,19 @@ chmod 600 .afk.json
 
 **Encryption:** `aead_xchacha20_poly1305_rtpsize` (mặc định lib).
 
+**DAVE/E2EE:** `@discordjs/voice` 0.19.2 dùng `@snazzah/davey` — bắt buộc từ 03/2026.
+
 **UDP:** RTP packet qua UDP hole punching.
+
+### Go Live stream (native lib)
+
+| Bước | API |
+|------|-----|
+| Join voice | `client.voice.joinChannel(channel, { videoCodec: 'H264' })` |
+| Tạo stream | `connection.createStreamConnection()` |
+| Gửi video | `streamConnection.playVideo(source, { fps, bitrate, inputFFmpegArgs, outputFFmpegArgs })` |
+
+Capture màn hình do ffmpeg đảm nhận (`gdigrab` / `x11grab` / `avfoundation`), encode H264 baseline, đóng gói RTP rồi gửi qua voice UDP.
 
 ### Discord Rich Presence (gateway)
 
@@ -491,12 +621,15 @@ Activity object:
   details, state,
   timestamps: { start, end },
   assets: { large_image, large_text, small_image, small_text },
-  buttons: [{ label, url }],
+  buttons: ['Label 1', 'Label 2'],
+  metadata: { button_urls: ['https://...', 'https://...'] },
   party: { id, size: [current, max] },
   application_id,
   ...
 }
 ```
+
+Selfbot gateway serialize buttons dạng `labels + metadata.button_urls` (khác bot thường).
 
 **Không dùng Local RPC** (`127.0.0.1:6463`) — chỉ cần gateway, không cần Discord desktop chạy.
 
@@ -528,7 +661,7 @@ Config:
 
 ## Session log
 
-File `session.log` — JSON Lines format. Mỗi session 1 dòng:
+File `session.log` (đổi được qua `config.json` → `sessionLogFile`) — JSON Lines format. Mỗi session 1 dòng:
 
 ```json
 {"startedAt":"2026-09-20T10:00:00.000Z","endedAt":"2026-09-20T16:00:00.000Z","durationSec":21600,"maxSec":21600}
@@ -554,7 +687,10 @@ tail -f session.log   # Unix
 npm install
 ```
 
-### `Không có token trong ...tokens.txt`
+Nếu `npm install` báo lockfile lệch (`@discordjs/voice` 0.18 vs 0.19.2), chạy lại `npm install` để npm cập nhật `package-lock.json`; không cần xoá lock.
+
+### `Không có token — đặt DISCORD_TOKEN hoặc tạo ...tokens.txt`
+- Đặt biến môi trường `DISCORD_TOKEN` (hoặc tên trong `config.tokenEnv`), hoặc
 - Tạo `tokens.txt` ở root project, mỗi dòng 1 token
 - Bỏ dòng trống và comment (`#`)
 
@@ -562,6 +698,29 @@ npm install
 - Firewall block UDP → mở port hoặc tắt firewall tạm
 - VPN đang bật → tắt
 - Thử voice channel khác
+- Node < 22.12 hoặc `@discordjs/voice` < 0.19.2 → không có DAVE, Discord chặn
+
+### Voice crash / process tự thoát
+- Đã thêm listener `error` cho voice connection + bắt `unhandledRejection` / `uncaughtException`
+- Nếu vẫn thoát: bật `debug: true`, chạy lại, gửi log quanh thời điểm crash
+- Kiểm tra Node >= 22.12 và đã `npm install` lại sau khi update
+
+### `.stream` báo không tìm thấy ffmpeg
+- Chạy `npm install` để cài `ffmpeg-static` (optional)
+- Hoặc cài ffmpeg có libx264 vào PATH, kiểm tra:
+  ```bash
+  ffmpeg -hide_banner -encoders | findstr libx264
+  ```
+
+### `.stream` join fail / timeout (DAVE)
+- Discord bắt buộc DAVE/E2EE từ 03/2026; native stack chưa hỗ trợ → Go Live có thể bị từ chối
+- `.voice` vẫn dùng `@discordjs/voice` 0.19.2 (DAVE OK), chỉ `.stream` bị ảnh hưởng
+
+### Stream vào nhưng màn hình đen
+- DRM / protected content (Netflix, app exclusive-fullscreen) → luôn đen, không sửa được
+- Thử chạy app ở windowed/borderless thay vì exclusive fullscreen
+- Kiểm tra `stream.captureSource` (mặc định `desktop` = toàn màn hình)
+- Bật `debug: true` để xem log ffmpeg (`ffmpeg:` trong dashboard)
 
 ### `.cmd` gửi trong DM không reply
 - Token đúng chưa? Login thành công chưa?
@@ -581,6 +740,19 @@ npm install
 - Ảnh đã upload vào app chưa?
 - Key đúng chưa (case-sensitive)?
 - Đợi 1-5 phút sau khi upload
+- URL ngoài Discord phải là direct link; tool upload qua `getExternal` — xem log `RPC:` nếu lỗi
+- User account không tự thấy buttons của chính mình; nhờ account khác/bot kiểm tra
+
+### `.rpc` không áp dụng
+- `rpc.json` sai JSON → log `RPC: ... sai JSON`
+- `enabled: false` hoặc đang `applyOnReady: false` → dùng `.rpc reload`
+- Đã `.rpc off` trước đó → `.rpc on`
+- `refreshInterval` < 15 sẽ bị kẹp về 15
+
+### Dashboard không hiện
+- Thiếu TTY / chạy qua pipe → tự chuyển headless (log thẳng ra stdout)
+- `dashboard: false` trong config → luôn headless
+- Console vẫn gõ lệnh được ở headless
 
 ### Session không tự dừng
 - `sessionAutoStop: true` trong config?

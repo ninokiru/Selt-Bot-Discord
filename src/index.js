@@ -4,18 +4,25 @@ import { fileURLToPath } from 'node:url';
 import { createSelfbotClient, loadAllowedChannels } from './client.js';
 import { makeLogger, setDebug, setOutput, log as rootLog } from './logger.js';
 import { setShuttingDown, isShuttingDown } from './shutdown.js';
-import { readLines, readJson, sleep, fmtDur, auditSecretFile } from './utils.js';
+import { readLines, sleep, fmtDur, auditSecretFile } from './utils.js';
 import { createDashboard } from './dashboard.js';
 import { createSession, logSessionEnd } from './session.js';
 import { createStats } from './stats.js';
+import { loadConfig } from './config.js';
 import {
   loadCommandFiles,
   buildDispatcher,
   startConsole,
 } from './commands/index.js';
 import { leaveVoice, getVoiceState } from './voiceSession.js';
-import { initRPC, applyRPCFromConfig } from './rpc.js';
-import { initAfk, getAfk } from './afk.js';
+import { stopStream, getStreamState } from './stream.js';
+import {
+  initRPC,
+  applyRPCFromConfig,
+  stopRPC,
+  getRpcState,
+} from './rpc.js';
+import { initAfk, getAfk, flushAfk } from './afk.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -23,15 +30,16 @@ const ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(ROOT, 'config.json');
 const CHANNEL_PATH = path.join(ROOT, 'channel.txt');
 const TOKENS_PATH = path.join(ROOT, 'tokens.txt');
-const SESSION_LOG = path.join(ROOT, 'session.log');
 
 let currentClient = null;
+let currentConfig = null;
 let consoleRl = null;
 let session = null;
 let stats = null;
 let dispatcher = null;
 let stopped = false;
 let activeDashboard = null;
+let dashTimer = null;
 
 function requestShutdown() {
   if (isShuttingDown()) {
@@ -44,9 +52,24 @@ function requestShutdown() {
 }
 globalThis.__sbStop = () => requestShutdown();
 
-async function startSelfbot(config, token, dashboard) {
+function resolveToken(config) {
+  const envName = config.tokenEnv || 'DISCORD_TOKEN';
+  const envToken = envName ? process.env[envName] : '';
+  if (envToken && envToken.trim()) {
+    return { token: envToken.trim(), source: `env ${envName}` };
+  }
+
+  const tokens = readLines(TOKENS_PATH);
+  if (tokens.length) return { token: tokens[0], source: 'tokens.txt' };
+
+  return null;
+}
+
+async function startSelfbot(config, token, tokenSource, dashboard) {
   const logger = makeLogger('sb');
+  currentConfig = config;
   logger.info('🚀 Khởi động selfbot gateway...');
+  logger.debug(`Token: ${tokenSource}`);
 
   loadAllowedChannels(CHANNEL_PATH);
 
@@ -62,11 +85,8 @@ async function startSelfbot(config, token, dashboard) {
 
   stats = createStats();
 
-  // Init AFK
   initAfk(config);
-
-  // Init RPC
-  initRPC({ config, logger, getClient: () => currentClient });
+  initRPC({ config, logger, getClient: () => currentClient, stats });
 
   // Dispatcher
   dispatcher = buildDispatcher({ config, logger, stats, session });
@@ -116,7 +136,7 @@ async function startSelfbot(config, token, dashboard) {
 
   // Apply RPC
   try {
-    applyRPCFromConfig();
+    await applyRPCFromConfig({ startup: true, quiet: true });
   } catch (e) {
     logger.warn(`RPC apply fail: ${e.message}`);
   }
@@ -130,6 +150,8 @@ async function startSelfbot(config, token, dashboard) {
   dashboard.setSessionMax(config.sessionMaxMinutes || 360);
   dashboard.setRunning(true);
   dashboard.setStats(stats.snapshot());
+  dashboard.setRpc(getRpcState());
+  dashboard.setStream(getStreamState());
 
   logger.ok(`Selfbot ready: ${client.user.tag}`);
 
@@ -147,7 +169,7 @@ async function startSelfbot(config, token, dashboard) {
   session.start();
 
   // Dashboard updater
-  const dashTimer = setInterval(() => {
+  dashTimer = setInterval(() => {
     if (isShuttingDown() || !currentClient) return;
     try {
       dashboard.setPing(currentClient.ws?.ping ?? 0);
@@ -155,12 +177,22 @@ async function startSelfbot(config, token, dashboard) {
       dashboard.setStats(stats.snapshot());
       if (session) dashboard.setSessionElapsed(session.elapsedMs());
 
-      // AFK
       dashboard.setAfk(getAfk());
 
-      // Voice
+      const st = getStreamState();
       const vs = getVoiceState();
-      if (vs.connected) {
+
+      dashboard.setStream(st);
+      dashboard.setRpc(getRpcState());
+
+      if (st.active) {
+        const g = currentClient.guilds.cache.get(st.guildId);
+        const c = g?.channels?.cache?.get(st.channelId);
+        const liveFor = fmtDur((Date.now() - st.startedAt) / 1000);
+        dashboard.setVoice(`${g?.name || '?'} / ${c?.name || '?'} · LIVE ${liveFor}`);
+      } else if (st.starting) {
+        dashboard.setVoice('Starting stream...');
+      } else if (vs.connected) {
         const g = currentClient.guilds.cache.get(vs.guildId);
         const c = g?.channels?.cache?.get(vs.channelId);
         dashboard.setVoice(`${g?.name || '?'} / ${c?.name || '?'}`);
@@ -169,8 +201,6 @@ async function startSelfbot(config, token, dashboard) {
       }
     } catch {}
   }, 2000);
-
-  client._dashTimer = dashTimer;
 
   return client;
 }
@@ -181,9 +211,15 @@ async function stopSelfbot(dashboard) {
 
   const logger = makeLogger('sb');
 
+  if (dashTimer) {
+    clearInterval(dashTimer);
+    dashTimer = null;
+  }
+
   if (session) {
     session.stop();
-    logSessionEnd({ session, path: SESSION_LOG, logger });
+    const logPath = path.resolve(ROOT, currentConfig?.sessionLogFile || 'session.log');
+    logSessionEnd({ session, path: logPath, logger });
     session = null;
   }
 
@@ -193,6 +229,20 @@ async function stopSelfbot(dashboard) {
   }
 
   try {
+    const st = getStreamState();
+    if (st.active || st.starting) {
+      await stopStream({
+        client: currentClient,
+        config: currentConfig,
+        logger,
+        stats,
+        restore: false,
+        reason: 'shutdown',
+      });
+    }
+  } catch {}
+
+  try {
     const vs = getVoiceState();
     if (vs.connected) {
       await leaveVoice({ logger, stats });
@@ -200,9 +250,16 @@ async function stopSelfbot(dashboard) {
     }
   } catch {}
 
+  try {
+    stopRPC();
+  } catch {}
+
+  try {
+    flushAfk();
+  } catch {}
+
   if (currentClient) {
     try {
-      if (currentClient._dashTimer) clearInterval(currentClient._dashTimer);
       await currentClient.destroy();
       logger.ok('Selfbot đã dừng');
     } catch (e) {
@@ -216,31 +273,60 @@ async function stopSelfbot(dashboard) {
 }
 
 async function main() {
-  const config = readJson(CONFIG_PATH, null);
-  if (!config) {
-    console.error(`Không đọc được ${CONFIG_PATH}`);
+  let loaded;
+  try {
+    loaded = loadConfig(CONFIG_PATH);
+  } catch (e) {
+    console.error(e.message);
     process.exit(1);
   }
+
+  const config = loaded.config;
   setDebug(config.debug);
 
-  auditSecretFile(TOKENS_PATH, 'tokens.txt');
-
-  const tokens = readLines(TOKENS_PATH);
-  if (!tokens.length) {
-    console.error(`Không có token trong ${TOKENS_PATH}`);
-    process.exit(1);
-  }
-
-  const token = tokens[0];
-
-  const dashboard = createDashboard({ onQuit: () => requestShutdown() });
+  const dashboard = createDashboard({
+    onQuit: () => requestShutdown(),
+    headless: config.dashboard === false,
+  });
   activeDashboard = dashboard;
   setOutput((line) => dashboard.appendLog(line));
+
+  for (const warning of loaded.warnings) {
+    rootLog.warn(`Config: ${warning}`);
+  }
+
+  auditSecretFile(TOKENS_PATH, 'tokens.txt');
+  auditSecretFile(path.join(ROOT, 'rpc.json'), 'rpc.json');
+
+  const resolved = resolveToken(config);
+  if (!resolved) {
+    rootLog.error(
+      `Không có token — đặt ${config.tokenEnv || 'DISCORD_TOKEN'} hoặc tạo ${TOKENS_PATH}`
+    );
+    try { dashboard.destroy(); } catch {}
+    process.exit(1);
+  }
 
   process.on('SIGINT', () => requestShutdown());
   process.on('SIGTERM', () => requestShutdown());
 
-  const client = await startSelfbot(config, token, dashboard);
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason ?? '');
+    rootLog.error(`Unhandled rejection: ${msg}`);
+    try { stats?.bump('errors'); } catch {}
+  });
+
+  process.on('uncaughtException', (e) => {
+    rootLog.error(`Uncaught exception: ${e?.message || e}`);
+    try { stats?.bump('errors'); } catch {}
+    requestShutdown();
+  });
+
+  process.on('warning', (w) => {
+    try { rootLog.debug?.(`Node warning: ${w?.name || ''} ${w?.message || ''}`.trim()); } catch {}
+  });
+
+  const client = await startSelfbot(config, resolved.token, resolved.source, dashboard);
 
   if (isShuttingDown()) {
     await stopSelfbot(dashboard);

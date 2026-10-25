@@ -3,6 +3,8 @@
   "sessionWarnMinutes": 300,
   "sessionAutoStop": true,
   "sessionLogFile": "session.log",
+  "dashboard": true,
+  "tokenEnv": "DISCORD_TOKEN",
 
   "status": {
     "type": "PLAYING",
@@ -43,6 +45,18 @@
     "reconnectMaxAttempts": 3,
     "selfDeaf": true,
     "selfMute": false
+  },
+
+  "stream": {
+    "enabled": true,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "bitrateKbps": 2500,
+    "preset": "faster",
+    "captureSource": "",
+    "captureCursor": true,
+    "restoreVoice": true
   },
 
   "afk": {

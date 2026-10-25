@@ -12,6 +12,14 @@ const categories = new Map();
 const hidden = new Set();
 const rateBuckets = new Map();
 
+const RATE_TTL_MS = 60 * 60 * 1000;
+const RATE_MAX_BUCKETS = 1000;
+const RATE_PRUNE_EVERY_MS = 60 * 1000;
+const RATE_PRUNE_TIMER_MS = 10 * 60 * 1000;
+const MAX_REPLY_CHARS = 1900;
+
+let lastRatePruneAt = 0;
+
 export function registerCommand(name, def) {
   if (!name || !def?.handler) return;
   registry.set(name, def);
@@ -33,10 +41,81 @@ export function getVisibleCommands() {
   for (const [name, def] of registry) {
     if (seen.has(def)) continue;
     seen.add(def);
-    if (hidden.has(name)) continue;
-    out.push({ name, ...def });
+    if (def.hidden || hidden.has(name)) continue;
+    out.push({ ...def, name });
   }
   return out;
+}
+
+// ── Tìm lệnh gần đúng (Levenshtein, không dependency) ─────
+function levenshtein(a, b) {
+  a = String(a ?? '').toLowerCase();
+  b = String(b ?? '').toLowerCase();
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  let prev = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    const cur = new Array(b.length + 1);
+    cur[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+export function findClosestCommand(name, maxDistance = 2) {
+  const target = String(name ?? '').trim().toLowerCase();
+  if (!target) return null;
+
+  let best = null;
+  let bestDistance = maxDistance + 1;
+
+  for (const key of registry.keys()) {
+    const distance = levenshtein(target, key);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = key;
+      if (distance === 0) break;
+    }
+  }
+
+  return bestDistance <= maxDistance ? best : null;
+}
+
+// Trả về lệnh theo tên hoặc alias (kể cả hidden).
+export function findCommand(name) {
+  const target = String(name ?? '').trim().toLowerCase();
+  if (!target) return null;
+
+  let def = null;
+  for (const [key, value] of registry) {
+    if (key.toLowerCase() === target) {
+      def = value;
+      break;
+    }
+  }
+  if (!def) return null;
+
+  let canonical = target;
+  for (const [key, value] of registry) {
+    if (value === def) {
+      canonical = key;
+      break;
+    }
+  }
+
+  return {
+    name: canonical,
+    def,
+    hidden: hidden.has(canonical) || !!def.hidden,
+  };
 }
 
 function collectFiles(dir, base = '') {
@@ -72,6 +151,44 @@ export async function loadCommandFiles(ctx) {
   return loaded;
 }
 
+// ── Rate limiter buckets: hết hạn sau 1h, tối đa 1000 entry ─
+function bucketLastUsed(bucket) {
+  return Math.max(bucket.lastAt || 0, bucket.windowStart || 0);
+}
+
+function trimRateBuckets() {
+  if (rateBuckets.size <= RATE_MAX_BUCKETS) return;
+
+  const entries = [...rateBuckets.entries()]
+    .sort((a, b) => bucketLastUsed(a[1]) - bucketLastUsed(b[1]));
+  const excess = rateBuckets.size - RATE_MAX_BUCKETS;
+
+  for (let i = 0; i < excess; i++) {
+    rateBuckets.delete(entries[i][0]);
+  }
+}
+
+function pruneRateBuckets(now = Date.now()) {
+  for (const [key, bucket] of rateBuckets) {
+    if (now - bucketLastUsed(bucket) > RATE_TTL_MS) {
+      rateBuckets.delete(key);
+    }
+  }
+  trimRateBuckets();
+}
+
+function maybePruneRateBuckets(now) {
+  if (now - lastRatePruneAt < RATE_PRUNE_EVERY_MS) {
+    trimRateBuckets();
+    return;
+  }
+  lastRatePruneAt = now;
+  pruneRateBuckets(now);
+}
+
+const ratePruneTimer = setInterval(() => pruneRateBuckets(), RATE_PRUNE_TIMER_MS);
+if (typeof ratePruneTimer?.unref === 'function') ratePruneTimer.unref();
+
 function checkRateLimit(userId, commandName, rlCfg) {
   if (!rlCfg?.enabled) return { allowed: true };
 
@@ -81,10 +198,13 @@ function checkRateLimit(userId, commandName, rlCfg) {
   const cooldownMs = rlCfg.cooldownMs ?? 1500;
   const ignoreDuplicateMs = rlCfg.ignoreDuplicateMs ?? 3000;
 
+  maybePruneRateBuckets(now);
+
   let b = rateBuckets.get(userId);
   if (!b) {
     b = { windowStart: now, count: 0, lastAt: 0, lastCmd: null, lastCmdAt: 0 };
     rateBuckets.set(userId, b);
+    trimRateBuckets();
   }
 
   if (now - b.windowStart >= windowMs) {
@@ -115,6 +235,26 @@ function checkRateLimit(userId, commandName, rlCfg) {
   return { allowed: true };
 }
 
+async function safeReply(msg, text) {
+  if (typeof msg?.reply !== 'function') return null;
+  try {
+    const sent = await msg.reply(String(text ?? '').slice(0, MAX_REPLY_CHARS));
+    if (sent?.id) {
+      try { markCodeSent(sent.id); } catch {}
+    }
+    return sent;
+  } catch {
+    return null;
+  }
+}
+
+function printConsoleReply(logger, text) {
+  const lines = String(text ?? '').split(/\r?\n/);
+  for (const line of lines) {
+    try { logger.cmd(`  ${line}`); } catch {}
+  }
+}
+
 export function buildDispatcher(ctx) {
   const { config, logger, stats, session } = ctx;
   const rlCfg = config.commands?.rateLimit || {};
@@ -139,8 +279,7 @@ export function buildDispatcher(ctx) {
 
         if (!rlCfg.silentOnLimit && msg?.reply) {
           const sec = Math.ceil(rl.waitMs / 1000);
-          const sent = await msg.reply(`⏳ Chờ ${sec}s`).catch(() => null);
-          if (sent) markCodeSent(sent.id);
+          await safeReply(msg, `⏳ Chờ ${sec}s`);
         }
         return;
       }
@@ -148,36 +287,53 @@ export function buildDispatcher(ctx) {
 
     const handler = registry.get(name);
     if (!handler) {
-      logger.debug(`Unknown: ${name}`);
-      if (msg?.reply) {
-        const sent = await msg.reply(`Lệnh "${name}" không tồn tại. Dùng .cmd`).catch(() => null);
-        if (sent) markCodeSent(sent.id);
+      const suggestion = findClosestCommand(name);
+      const base = `Lệnh "${name}" không tồn tại. Dùng .cmd`;
+
+      if (source === 'console' || !msg) {
+        logger.warn(`${base}${suggestion ? ` Có phải ý bạn là .${suggestion}?` : ''}`);
+        return;
       }
+
+      logger.debug(`Unknown: ${name}${suggestion ? ` (gợi ý: ${suggestion})` : ''}`);
+      const lines = [base];
+      if (suggestion) lines.push(`Có phải ý bạn là .${suggestion}?`);
+      await safeReply(msg, lines.join('\n'));
       return;
     }
 
     const replyFn = async (text) => {
+      const body = String(text ?? '');
+
+      if (source === 'console' || !msg) {
+        printConsoleReply(logger, body);
+        return;
+      }
+
       const anti = config.antiDetection || {};
       const delay = randInt(anti.reactDelayMinMs ?? 200, anti.reactDelayMaxMs ?? 800);
       await sleep(delay);
-      if (msg?.reply) {
-        const sent = await msg.reply(String(text).slice(0, 1900)).catch(() => null);
-        if (sent) markCodeSent(sent.id);
-      }
+      await safeReply(msg, body);
     };
 
+    const startedAt = Date.now();
     try {
       await handler.handler({
         name, args, msg, client, config, logger, stats, session, source,
         reply: replyFn,
       });
-      stats?.bump('commandsExecuted');
-      logger.cmd(`OK ${name} ${args.join(' ')} (${source})`);
     } catch (e) {
       stats?.bump('commandsFailed');
-      logger.error(`Command "${name}" lỗi: ${e.message}`);
-      await replyFn(`Lỗi: ${e.message}`);
+      const ms = Date.now() - startedAt;
+      logger.error(`Command "${name}" lỗi sau ${ms}ms: ${e?.message ?? e}`);
+      try { await replyFn(`Lỗi: ${e?.message ?? e}`); } catch {}
+      return;
     }
+
+    stats?.bump('commandsExecuted');
+    const ms = Date.now() - startedAt;
+    const argText = Array.isArray(args) ? args.join(' ') : '';
+    logger.cmd(`OK ${name}${argText ? ` ${argText}` : ''} (${source}, ${ms}ms)`);
   };
 }
 
@@ -204,6 +360,10 @@ export function startConsole({ dispatcher, config, logger, getClient }) {
     } catch (e) {
       logger.error(`Console: ${e.message}`);
     }
+  });
+
+  rl.on('error', (e) => {
+    logger.error(`Console input lỗi: ${e?.message ?? e}`);
   });
 
   rl.on('close', () => {});

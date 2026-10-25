@@ -13,9 +13,13 @@ export function createStats() {
     voiceJoins: 0,
     voiceLeaves: 0,
     voiceReconnects: 0,
+    streamStarts: 0,
+    streamStops: 0,
     afkPings: 0,
     afkReplies: 0,
     presenceUpdates: 0,
+    rpcApplies: 0,
+    rpcErrors: 0,
   };
 
   function bump(key, delta = 1) {
